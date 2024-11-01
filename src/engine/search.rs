@@ -344,7 +344,7 @@ impl Engine {
                 let mut reduction = 0;
                 if !is_pv_node && legal_moves >= SearchParameters::LMRLegalMovesLimit
                     && depth >= SearchParameters::LMRDepthLimit && !tactical {
-                    reduction = SearchParameters::LMR()[depth as usize][legal_moves as usize];
+                    reduction = SearchParameters::LMR(depth, legal_moves);
                 }
 
                 score = -self.negamax(game, depth - 1 - reduction, ply + 1, -(alpha + 1.0), -alpha, &mut child_pv_line, true, mov, &Move::null(), is_extended);
@@ -392,7 +392,7 @@ impl Engine {
         }
 
         // store tt
-        let mut entry = self.tt.store(game.get_hash(), depth);
+        let entry = self.tt.store(game.get_hash(), depth);
         entry.set(game.get_hash(), best_score, best_move, ply, depth, tt_flag);
 
 

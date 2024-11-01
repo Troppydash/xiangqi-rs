@@ -18,14 +18,15 @@ impl SearchParameters {
     pub const LMRLegalMovesLimit: i32 = 4;
     pub const LMRDepthLimit: i32 = 3;
 
-    pub fn LMR() -> Vec<Vec<i32>> {
-        let mut lmr = vec![vec![0; 100]; 1000];
-        for depth in 3..1000 {
-            for cnt in 3..100usize {
-                lmr[depth][cnt] = (max(2, depth / 4) + cnt / 12) as i32;
-            }
-        }
-
-        lmr
+    pub fn LMR(depth: i32, cnt: i32) -> i32 {
+        (max(2, depth / 4) + cnt / 12) as i32
+        // let mut lmr = vec![vec![0; 100]; 1000];
+        // for depth in 3..1000 {
+        //     for cnt in 3..100usize {
+        //         lmr[depth][cnt] = (max(2, depth / 4) + cnt / 12) as i32;
+        //     }
+        // }
+        // 
+        // lmr
     }
 }

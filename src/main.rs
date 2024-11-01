@@ -11,7 +11,7 @@ fn main() {
     println!("{}", board.display());
     
     let mut engine = Engine::new();
-    engine.search(&mut board, 10);
+    engine.search(&mut board, 7);
     
     // let mut total = 0;
     // for _ in 0..10000000 {

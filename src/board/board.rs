@@ -21,6 +21,9 @@ pub struct Board {
     rng_black: u64,
     hh: u64,
 
+    cache_moves: Vec<Move>,
+    cache_ok: bool,
+
     ply: i32,
     last_capture: i32,
     history: HashMap<u64, u8>,
@@ -93,6 +96,8 @@ impl Board {
             ply: 0,
             last_capture: 0,
             history: Default::default(),
+            cache_moves: vec![],
+            cache_ok: false,
         };
         item.get_hash();
         item
@@ -131,6 +136,10 @@ impl Board {
     }
 
     pub fn get_moves(&mut self, captures: bool) -> Vec<Move> {
+        if !captures && self.cache_ok {
+            return self.cache_moves.clone();
+        }
+        
         let mut buffer = self.get_all_moves();
 
         // find own general and other
@@ -152,7 +161,7 @@ impl Board {
         }
 
         if grow == -1 || otherrow == -1 {
-            println!("uh oh");
+            println!("uh oh 1");
         }
 
         self.player = self.player.inverse();
@@ -168,6 +177,9 @@ impl Board {
             }
 
             if !self.is_valid_move(&mov) {
+                println!("{}", self.display());
+                println!("Move {}", mov.display());
+                // println!("oh no 2");
                 continue;
             }
 
@@ -178,6 +190,11 @@ impl Board {
             self.unmov(mov);
         }
 
+        if !captures {
+            self.cache_ok = true;
+            self.cache_moves = updated_buffer.clone();
+        }
+        
         updated_buffer
     }
 
@@ -218,13 +235,15 @@ impl Board {
 
 
     pub fn mov(&mut self, mov: &mut Move) {
+        self.cache_ok = false;
+
         // handle null
         if mov.is_null() {
             self.player = self.player.inverse();
             self.ply += 1;
             return;
         }
-        
+
         self.hh &= self.get_hash_cell(mov.endy, mov.endx);
         self.hh &= self.get_hash_cell(mov.starty, mov.startx);
 
@@ -247,13 +266,15 @@ impl Board {
     }
 
     pub fn unmov(&mut self, mov: &mut Move) {
+        self.cache_ok = false;
+
         // handle null
         if mov.is_null() {
             self.player = self.player.inverse();
             self.ply -= 1;
             return;
         }
-        
+
         self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
 
         if mov.captured != Piece::SPACE {
@@ -370,9 +391,8 @@ impl Board {
     }
 
 
-    fn get_all_moves(&self) -> Vec<Move> {
+    fn get_all_moves(&mut self) -> Vec<Move> {
         let mut mov_buffer = vec![];
-
 
         let sign = if self.player == RED { 1 } else { -1 };
         for row in 0..Self::ROWS {
@@ -389,10 +409,10 @@ impl Board {
                         self.soldier_moves(irow, icol, &mut mov_buffer);
                     }
                     Piece::CANNON => {
-                        self.cannon_moves(irow, icol, &mut mov_buffer);
+                        self.cannon_moves(irow, icol, &mut mov_buffer, 0, 0);
                     }
                     Piece::CHARIOT => {
-                        self.chariot_moves(irow, icol, &mut mov_buffer);
+                        self.chariot_moves(irow, icol, &mut mov_buffer, 0, 0);
                     }
                     Piece::ADVISOR => {
                         self.advisor_moves(irow, icol, &mut mov_buffer);
@@ -404,7 +424,7 @@ impl Board {
                         self.general_moves(irow, icol, &mut mov_buffer);
                     }
                     Piece::HORSE => {
-                        self.horse_moves(irow, icol, &mut mov_buffer);
+                        self.horse_moves(irow, icol, &mut mov_buffer, 0, 0);
                     }
                     _ => {}
                 }
@@ -470,13 +490,13 @@ impl Board {
                     self.soldier_moves(row, col, &mut check_buffer);
                 }
                 Piece::CANNON => {
-                    self.cannon_moves(row, col, &mut check_buffer);
+                    self.cannon_moves(row, col, &mut check_buffer, (gcol - col).signum(), (grow-row).signum());
                 }
                 Piece::CHARIOT => {
-                    self.chariot_moves(row, col, &mut check_buffer);
+                    self.chariot_moves(row, col, &mut check_buffer, (gcol - col).signum(), (grow-row).signum());
                 }
                 Piece::HORSE => {
-                    self.horse_moves(row, col, &mut check_buffer);
+                    self.horse_moves(row, col, &mut check_buffer, gcol - col, grow - row);
                 }
                 _ => {}
             }
@@ -566,8 +586,14 @@ impl Board {
         return false;
     }
 
-    fn cannon_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
-        for (drow, dcol) in &self.horizontal {
+    fn cannon_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>,  dcol: i8, drow: i8) {
+        let search = if !(dcol == 0 && drow == 0) {
+            &vec![(drow, dcol)]
+        } else {
+            &self.horizontal
+        };
+        
+        for (drow, dcol) in search {
             let mut jumped = false;
             for steps in 1..11 {
                 let target_row = row + drow * steps;
@@ -602,8 +628,14 @@ impl Board {
         row == grow || col == gcol
     }
 
-    fn chariot_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
-        for (drow, dcol) in &self.horizontal {
+    fn chariot_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
+        let search = if !(dcol == 0 && drow == 0) {
+            &vec![(drow, dcol)]
+        } else {
+            &self.horizontal
+        };
+        
+        for (drow, dcol) in search {
             for steps in 1..11 {
                 let target_row = row + drow * steps;
                 let target_col = col + dcol * steps;
@@ -703,8 +735,14 @@ impl Board {
         }
     }
 
-    fn horse_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
-        for (drow, dcol) in &self.horse {
+    fn horse_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
+        let search= if !(dcol == 0 && drow == 0) {
+            &vec![(drow, dcol)]
+        }else {
+            &self.horse
+        };
+        
+        for (drow, dcol) in search {
             let mov = Move::new(row, col, row + drow, col + dcol);
             if !self.is_valid_move(&mov) {
                 continue;
