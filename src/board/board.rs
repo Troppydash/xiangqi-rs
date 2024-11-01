@@ -166,7 +166,7 @@ impl Board {
             if captures && mov.captured == 0 {
                 continue;
             }
-            
+
             if !self.is_valid_move(&mov) {
                 continue;
             }
@@ -236,7 +236,7 @@ impl Board {
 
         self.ply += 1;
 
-        // TODO: history        
+        // TODO: history
     }
 
     pub fn unmov(&mut self, mov: &mut Move) {
