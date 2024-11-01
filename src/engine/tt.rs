@@ -1,7 +1,7 @@
 use crate::board::movee::Move;
 use crate::engine::parameters::SearchParameters;
 
-struct TTEntry {
+pub struct TTEntry {
     hash: u64,
     depth: i32,
     score: f32,
@@ -59,10 +59,10 @@ impl TTEntry {
         (best.clone(), adjusted, should_use)
     }
 
-    pub fn set(&mut self, hash: u64, mut score: f32, best: &Option<Move>, ply: i32, depth: i32, flag: i8) {
+    pub fn set(&mut self, hash: u64, mut score: f32, best: &Move, ply: i32, depth: i32, flag: i8) {
         self.hash = hash;
         self.depth = depth;
-        self.best = best.clone();
+        self.best = Some(best.clone());
         self.flag = flag;
 
         if score > SearchParameters::Checkmate {

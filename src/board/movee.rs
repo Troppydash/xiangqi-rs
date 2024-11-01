@@ -12,6 +12,21 @@ impl Move {
     pub fn new(starty: i8, startx: i8, endy: i8, endx: i8) -> Self {
         Self { startx, starty, endx, endy, captured: 0, last_capture: 0 }
     }
+    
+    pub fn null() -> Self {
+        Self {
+            startx: -1,
+            starty: -1,
+            endx: -1,
+            endy: -1,
+            captured: -1,
+            last_capture: -1
+        }
+    }
+    
+    pub fn is_null(&self) -> bool {
+        self.startx == -1
+    }
 
     pub fn display(&self) -> String {
         let cols: Vec<char> = "ABCDEFGHIJK".chars().collect();
@@ -26,6 +41,10 @@ impl Move {
     }
 
     pub fn compute_hash(&self) -> u64 {
+        if self.is_null() {
+            return 0;
+        }
+        
         let prime = 23;
         vec![self.startx, self.starty, self.endx, self.endy].iter().fold(0, |acc, &val| acc * prime + (val as u64) + 1)
     }

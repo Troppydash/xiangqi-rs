@@ -9,8 +9,8 @@ use crate::board::piece::Piece;
 #[derive(Clone)]
 pub struct Board {
     // states
-    state: Vec<Vec<i8>>,
-    player: Condition,
+    pub state: Vec<Vec<i8>>,
+    pub player: Condition,
 
     // caches
     horizontal: Vec<(i8, i8)>,
@@ -36,7 +36,7 @@ impl Board {
             vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
             vec![0, -2, 0, 0, 0, 0, 0, -2, 0],
             vec![-7, 0, -7, 0, -7, 0, -7, 0, -7],
-            vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
+            vec![0, 0, 0, 2, 0, 0, 0, 0, 0],
             vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
             vec![7, 0, 7, 0, 7, 0, 7, 0, 7],
             vec![0, 2, 0, 0, 0, 0, 0, 2, 0],
@@ -218,6 +218,13 @@ impl Board {
 
 
     pub fn mov(&mut self, mov: &mut Move) {
+        // handle null
+        if mov.is_null() {
+            self.player = self.player.inverse();
+            self.ply += 1;
+            return;
+        }
+        
         self.hh &= self.get_hash_cell(mov.endy, mov.endx);
         self.hh &= self.get_hash_cell(mov.starty, mov.startx);
 
@@ -240,6 +247,13 @@ impl Board {
     }
 
     pub fn unmov(&mut self, mov: &mut Move) {
+        // handle null
+        if mov.is_null() {
+            self.player = self.player.inverse();
+            self.ply -= 1;
+            return;
+        }
+        
         self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
 
         if mov.captured != Piece::SPACE {

@@ -1,4 +1,4 @@
-mod search;
+pub mod search;
 mod tt;
 mod parameters;
 
