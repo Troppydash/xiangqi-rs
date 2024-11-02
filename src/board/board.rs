@@ -39,7 +39,7 @@ impl Board {
             vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
             vec![0, -2, 0, 0, 0, 0, 0, -2, 0],
             vec![-7, 0, -7, 0, -7, 0, -7, 0, -7],
-            vec![0, 0, 0, 2, 0, 0, 0, 0, 0],
+            vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
             vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
             vec![7, 0, 7, 0, 7, 0, 7, 0, 7],
             vec![0, 2, 0, 0, 0, 0, 0, 2, 0],
@@ -139,7 +139,7 @@ impl Board {
         if !captures && self.cache_ok {
             return self.cache_moves.clone();
         }
-        
+
         let mut buffer = self.get_all_moves();
 
         // find own general and other
@@ -194,8 +194,19 @@ impl Board {
             self.cache_ok = true;
             self.cache_moves = updated_buffer.clone();
         }
-        
+
         updated_buffer
+    }
+
+
+    /// Checks if the last move resulted a check
+    pub fn last_check(&mut self) -> bool {
+        // check if the last player will be captured
+        self.player = self.player.inverse();
+        let result = self.is_check();
+        self.player = self.player.inverse();
+
+        result
     }
 
 
@@ -309,6 +320,26 @@ impl Board {
         Condition::NONE
     }
 
+    // make a move, where the move is unverified
+    pub fn try_move(&mut self, mut mov: &mut Move) -> bool {
+        if !self.is_valid_move(&mov) {
+            return false;
+        }
+
+        // load information
+        mov.captured = self.state[mov.endy as usize][mov.endx as usize];
+
+        // try move
+        self.mov(&mut mov);
+        
+        // failing will unmove
+        if self.last_check() {
+            self.unmov(&mut mov);
+            return false;
+        }
+        
+        true
+    }
 
     pub fn display(&self) -> String {
         let cols: Vec<char> = "ABCDEFGHIJK".chars().collect();
@@ -490,10 +521,10 @@ impl Board {
                     self.soldier_moves(row, col, &mut check_buffer);
                 }
                 Piece::CANNON => {
-                    self.cannon_moves(row, col, &mut check_buffer, (gcol - col).signum(), (grow-row).signum());
+                    self.cannon_moves(row, col, &mut check_buffer, (gcol - col).signum(), (grow - row).signum());
                 }
                 Piece::CHARIOT => {
-                    self.chariot_moves(row, col, &mut check_buffer, (gcol - col).signum(), (grow-row).signum());
+                    self.chariot_moves(row, col, &mut check_buffer, (gcol - col).signum(), (grow - row).signum());
                 }
                 Piece::HORSE => {
                     self.horse_moves(row, col, &mut check_buffer, gcol - col, grow - row);
@@ -586,13 +617,13 @@ impl Board {
         return false;
     }
 
-    fn cannon_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>,  dcol: i8, drow: i8) {
+    fn cannon_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
         let search = if !(dcol == 0 && drow == 0) {
             &vec![(drow, dcol)]
         } else {
             &self.horizontal
         };
-        
+
         for (drow, dcol) in search {
             let mut jumped = false;
             for steps in 1..11 {
@@ -634,7 +665,7 @@ impl Board {
         } else {
             &self.horizontal
         };
-        
+
         for (drow, dcol) in search {
             for steps in 1..11 {
                 let target_row = row + drow * steps;
@@ -736,12 +767,12 @@ impl Board {
     }
 
     fn horse_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
-        let search= if !(dcol == 0 && drow == 0) {
+        let search = if !(dcol == 0 && drow == 0) {
             &vec![(drow, dcol)]
-        }else {
+        } else {
             &self.horse
         };
-        
+
         for (drow, dcol) in search {
             let mov = Move::new(row, col, row + drow, col + dcol);
             if !self.is_valid_move(&mov) {

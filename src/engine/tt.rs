@@ -66,11 +66,11 @@ impl TTEntry {
         self.flag = flag;
 
         if score > SearchParameters::Checkmate {
-            score -= ply as f32;
+            score += ply as f32;
         }
 
         if score < -SearchParameters::Checkmate {
-            score += ply as f32;
+            score -= ply as f32;
         }
 
         self.score = score;
