@@ -39,7 +39,7 @@ fn test_pos2() {
 
     println!("{}", board.display());
     let mut engine = Engine::new();
-    engine.search(&mut board, 10, 1000000);
+    engine.search(&mut board, 15, 1000000);
 }
 
 fn start_ws() {
@@ -53,14 +53,14 @@ fn main() {
 
     // let mut board = Board::new();
     // println!("{}", board.display());
-    // 
+    //
 
-    // // 
+    // //
     // let mut total = 0;
     // // for _ in 0..10000000 {
     //     let moves = board.get_moves(false);
     //     total += moves.len();
-    //     
+    //
     //     if total / 44 % 1000 == 0 {
     //         print!("\r{}", total/44);
     //     }

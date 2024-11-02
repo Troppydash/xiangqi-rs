@@ -1,4 +1,5 @@
 use std::ops::Index;
+use crate::board::piece::Piece;
 
 #[derive(Hash, Debug, Clone, Eq, PartialEq)]
 pub struct Move {
@@ -45,6 +46,18 @@ impl Move {
 
     pub fn is_null(&self) -> bool {
         self.startx == -1
+    }
+    
+    pub fn is_quiet(&self) -> bool {
+        self.captured == Piece::SPACE
+    }
+    
+    pub fn start_sq(&self) -> usize {
+        (self.starty * 9 + self.startx) as usize
+    }
+    
+    pub fn end_sq(&self) -> usize {
+        (self.endy * 9 + self.endx) as usize
     }
 
     pub fn display(&self) -> String {

@@ -20,9 +20,13 @@ impl SearchParameters {
     pub const LMRDepthLimit: i32 = 3;
     pub const MaxDepth: i32 = 30;
     
-    pub const MvvLvaOffset: f32 = 60000.0 - 256.0;
-    pub const MaxHistoryScore: f32 = Self::MvvLvaOffset - 30.0;
-    pub const PVMoveScore: f32 = 65.0;
+    pub const MaxKillers: i32 = 2;
+    pub const FirstKillerMoveScore: i32 = 10;
+    pub const SecondKillerMoveScore: i32 = 20;
+    pub const CounterMoveBonus: i32 = 5;
+    pub const MvvLvaOffset: i32 = 60000 - 256;
+    pub const MaxHistoryScore: i32 = Self::MvvLvaOffset - 30;
+    pub const PVMoveScore: i32 = 65;
     
 
     pub fn LMR(depth: i32, cnt: i32) -> i32 {

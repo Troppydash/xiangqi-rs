@@ -8,6 +8,8 @@ use crate::engine::tt::TT;
 pub struct Engine {
     tt: TT,
     history: Vec<Vec<Vec<i32>>>,
+    killers: Vec<Vec<Move>>,
+    counter: Vec<Vec<Vec<Move>>>,
 
     // debug
     searches: i32,
@@ -129,6 +131,8 @@ impl Engine {
         Self {
             tt: TT::new(),
             history: vec![vec![vec![0; 90]; 90]; 2],
+            killers: vec![vec![Move::null(); SearchParameters::MaxKillers as usize]; SearchParameters::MaxDepth as usize],
+            counter: vec![vec![vec![Move::null(); 90]; 90]; 2],
             searches: 0,
         }
     }
@@ -177,32 +181,47 @@ impl Engine {
     }
 
     fn score_moves(&self, game: &mut Board, moves: &mut Vec<Move>, ply: i32, pv_move: &Move, prev_move: &Move) {
+        let ply = ply as usize;
+
         // TODO: add this, but also fix draw and history quiet move stores
         // sort by history, decreasing
         moves.sort_unstable_by_key(|mov| {
-            // self.get_history(game, mov)
-            let mut score = 0.0;
-            
+            let mut score = 0;
+
             let capture = mov.captured;
-            
             if mov.equals(pv_move) {
                 score += SearchParameters::MvvLvaOffset + SearchParameters::PVMoveScore;
             } else if capture != Piece::SPACE {
-                score += SearchParameters::MvvLvaOffset + Self::SCORES[capture.abs() as usize];
-            } else {  // TODO: killer move
-                let history_score = self.get_history(game, mov) as f32;
+                score += SearchParameters::MvvLvaOffset + 5*Self::SCORES[capture.abs() as usize] as i32;
+            } else if mov.equals(&self.killers[ply][0]) {
+                score += SearchParameters::MvvLvaOffset - SearchParameters::FirstKillerMoveScore;
+            } else if mov.equals(&self.killers[ply][1]) {
+                score += SearchParameters::MvvLvaOffset - SearchParameters::SecondKillerMoveScore;
+            } else {
+                let history_score = self.get_history(game, mov);
+                
+                if !prev_move.is_null() {
+                    let counter_move = &self.counter
+                        [game.player as usize]
+                        [prev_move.start_sq()]
+                        [prev_move.end_sq()];
+
+                    if mov.equals(counter_move) {
+                        score += SearchParameters::CounterMoveBonus;
+                    }
+                }
+                
                 score += history_score;
             }
             
-            
-            return score.round() as i32;
+            return score;
         });
         moves.reverse();
     }
 
     fn qsearch(&mut self, game: &mut Board, mut alpha: f32, beta: f32, pv_line: &mut Vec<Move>, ply: i32, maxply: i32) -> f32 {
         self.searches += 1;
-        
+
         // conditions check that are exact
         let cond = game.condition();
         if cond == game.player {
@@ -216,7 +235,7 @@ impl Engine {
         if maxply + ply >= SearchParameters::MaxDepth {
             return self.classic_predict(game, ply);
         }
-        
+
         let mut best_score = self.classic_predict(game, ply);
         let in_check = ply <= 2 && game.is_check();
 
@@ -237,7 +256,7 @@ impl Engine {
 
             game.mov(mov);
             let score = -self.qsearch(
-                game, -beta, -alpha, &mut child_pv_line, ply + 1, maxply
+                game, -beta, -alpha, &mut child_pv_line, ply + 1, maxply,
             );
             game.unmov(mov);
 
@@ -261,14 +280,30 @@ impl Engine {
     }
 
     fn increment_history(&mut self, game: &Board, mov: &Move, depth: i32) {
-        self.history
-            [game.player as usize]
-            [(mov.starty * 9 + mov.startx) as usize]
-            [(mov.endy * 9 + mov.endx) as usize] += depth * depth;
+        if mov.is_quiet() {
+            self.history
+                [game.player as usize]
+                [(mov.starty * 9 + mov.startx) as usize]
+                [(mov.endy * 9 + mov.endx) as usize] += depth * depth;
+        }
+        
+        if self.get_history(game, mov) >= SearchParameters::MaxHistoryScore {
+            self.age_history(game);
+        }
+    }
+    
+    fn age_history(&mut self, game: &Board) {
+        for a in 0..90 {
+            for b in 0..90 {
+                self.history
+                [game.player as usize]
+                [a][b] /= 2;
+            }
+        }
     }
 
     fn decrement_history(&mut self, game: &Board, mov: &Move) {
-        if self.get_history(game, mov) > 0 {
+        if mov.is_quiet() && self.get_history(game, mov) > 0 {
             self.history
                 [game.player as usize]
                 [(mov.starty * 9 + mov.startx) as usize]
@@ -282,6 +317,26 @@ impl Engine {
             [(mov.starty * 9 + mov.startx) as usize]
             [(mov.endy * 9 + mov.endx) as usize]
     }
+
+    fn store_killer(&mut self, ply: i32, mov: &Move) {
+        let ply = ply as usize;
+        if mov.is_quiet() {
+            if !mov.equals(&self.killers[ply][0]) {
+                self.killers[ply][1] = self.killers[ply][0].clone();
+                self.killers[ply][0] = mov.clone();
+            }
+        }
+    }
+    
+    fn store_counter(&mut self, game: &Board, prev_move: &Move, curr_move: &Move) {
+        if curr_move.is_quiet() && !prev_move.is_null() {
+            self.counter
+                [game.player as usize]
+                [prev_move.start_sq()]
+                [prev_move.end_sq()] = curr_move.clone();
+        }
+    }
+
 
     fn negamax(&mut self, game: &mut Board,
                mut depth: i32, ply: i32, mut alpha: f32, beta: f32,
@@ -303,7 +358,7 @@ impl Engine {
         let in_check = game.is_check();
         let is_root = ply == 0;
         let is_pv_node = beta - alpha != 1.0;
-        
+
         // check extension
         if in_check {
             depth += 1;
@@ -406,6 +461,8 @@ impl Engine {
             if score >= beta {
                 tt_flag = SearchParameters::BetaFlag;
                 self.increment_history(game, mov, depth);
+                self.store_killer(ply, mov);
+                self.store_counter(game, prev_move, mov);
                 break;
             } else {
                 self.decrement_history(game, mov);
@@ -447,7 +504,7 @@ impl Engine {
             let before = game.get_hash();
             score = self.negamax(game, level, 0, alpha, beta, &mut pv_line, true, &Move::null(), &Move::null(), false);
             assert_eq!(before, game.get_hash(), "checking if the hash before and after negamax is equal");
-            
+
             // did not converge
             if score <= alpha || score >= beta {
                 alpha = -1e9;
@@ -466,7 +523,7 @@ impl Engine {
             } else {
                 format!("{}", score)
             };
-            
+
             println!("Searched {}, Depth {}, PV {}, Score {}", self.searches, level, best_move.display(), score_text);
 
             // check for position limit and checkmates
