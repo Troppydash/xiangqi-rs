@@ -45,6 +45,7 @@ fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
     }
 
     println!("{}", board.display());
+    println!("{}", moves.iter().map(Move::display).collect::<Vec<String>>().join(","));
     
     
     // run analysis

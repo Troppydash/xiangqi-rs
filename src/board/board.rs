@@ -47,6 +47,19 @@ impl Board {
             vec![3, 6, 4, 1, 5, 1, 4, 6, 3],
         ];
 
+        // let board = vec![
+        //     vec![-3, -6, -4, -1, -5, -1, -4, -6, -3],
+        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
+        //     vec![0, -2, 0, 0, 0, 0, 0, -2, 0],
+        //     vec![-7, 0, -7, 0, -7, 0, -7, 0, -7],
+        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
+        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
+        //     vec![7, 0, 7, 0, 7, 0, 7, 0, 7],
+        //     vec![0, 2, 0, 0, 0, 0, 0, 2, 0],
+        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
+        //     vec![3, 6, 4, 1, 5, 1, 4, 6, 3],
+        // ];
+
         let horizontal = vec![
             (-1, 0),
             (1, 0),
@@ -102,7 +115,7 @@ impl Board {
         item.get_hash();
         item
     }
-
+    
     pub fn get_hash_cell(&self, row: i8, col: i8) -> u64 {
         let row = row as usize;
         let col = col as usize;
@@ -161,6 +174,7 @@ impl Board {
         }
 
         if grow == -1 || otherrow == -1 {
+            println!("{}", self.display());
             println!("uh oh 1");
         }
 
@@ -179,7 +193,7 @@ impl Board {
             if !self.is_valid_move(&mov) {
                 println!("{}", self.display());
                 println!("Move {}", mov.display());
-                // println!("oh no 2");
+                println!("oh no 2");
                 continue;
             }
 
@@ -233,6 +247,7 @@ impl Board {
 
         // find moves of other team
         self.player = self.player.inverse();
+        self.cache_ok = false;
         for mov in self.get_all_moves() {
             if mov.endx == gcol && mov.endy == grow {
                 self.player = self.player.inverse();
@@ -247,6 +262,11 @@ impl Board {
 
     pub fn mov(&mut self, mov: &mut Move) {
         self.cache_ok = false;
+        
+        // check if capturing general
+        if mov.captured.abs() == Piece::GENERAL {
+            println!("capturing general?");
+        }
 
         // handle null
         if mov.is_null() {
@@ -255,8 +275,8 @@ impl Board {
             return;
         }
 
-        self.hh &= self.get_hash_cell(mov.endy, mov.endx);
-        self.hh &= self.get_hash_cell(mov.starty, mov.startx);
+        self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
+        self.hh ^= self.get_hash_cell(mov.starty, mov.startx);
 
         mov.last_capture = self.last_capture;
         if self.state[mov.endy as usize][mov.endx as usize] != Piece::SPACE {
@@ -331,13 +351,13 @@ impl Board {
 
         // try move
         self.mov(&mut mov);
-        
+
         // failing will unmove
         if self.last_check() {
             self.unmov(&mut mov);
             return false;
         }
-        
+
         true
     }
 
