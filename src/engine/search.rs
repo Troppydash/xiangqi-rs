@@ -179,12 +179,27 @@ impl Engine {
     fn score_moves(&self, game: &mut Board, moves: &mut Vec<Move>) {
         // TODO: add this, but also fix draw and history quiet move stores
         // sort by history, decreasing
-        moves.sort_by_key(|mov| self.get_history(game, mov));
+        moves.sort_unstable_by_key(|mov| self.get_history(game, mov));
         moves.reverse();
     }
 
-    fn qsearch(&mut self, game: &mut Board, mut alpha: f32, beta: f32, pv_line: &mut Vec<Move>, ply: i32) -> f32 {
+    fn qsearch(&mut self, game: &mut Board, mut alpha: f32, beta: f32, pv_line: &mut Vec<Move>, ply: i32, maxply: i32) -> f32 {
         self.searches += 1;
+        
+        // conditions check that are exact
+        let cond = game.condition();
+        if cond == game.player {
+            return SearchParameters::Win - ply as f32;
+        } else if cond == game.player.inverse() {
+            return -SearchParameters::Win + ply as f32;
+        } else if cond == DRAW {
+            return 0.0;
+        }
+
+        if maxply + ply >= SearchParameters::MaxDepth {
+            return self.classic_predict(game, ply);
+        }
+        
         let mut best_score = self.classic_predict(game, ply);
         let in_check = ply <= 2 && game.is_check();
 
@@ -205,7 +220,7 @@ impl Engine {
 
             game.mov(mov);
             let score = -self.qsearch(
-                game, -beta, -alpha, &mut child_pv_line, ply + 1,
+                game, -beta, -alpha, &mut child_pv_line, ply + 1, maxply
             );
             game.unmov(mov);
 
@@ -258,22 +273,27 @@ impl Engine {
     ) -> f32 {
         self.searches += 1;
 
+        // conditions check
+        let cond = game.condition();
+        if cond == game.player {
+            return SearchParameters::Win - ply as f32;
+        } else if cond == game.player.inverse() {
+            return -SearchParameters::Win + ply as f32;
+        } else if cond == DRAW {
+            return 0.0;
+        }
+
         let in_check = game.is_check();
         let is_root = ply == 0;
         let is_pv_node = beta - alpha != 1.0;
-
+        
         // check extension
         if in_check {
             depth += 1;
         }
 
         if depth <= 0 {
-            return self.qsearch(game, alpha, beta, pv_line, ply);
-        }
-
-        // draw
-        if !is_root && game.condition() == DRAW {
-            return 0.0;
+            return self.qsearch(game, alpha, beta, pv_line, ply, ply);
         }
 
         // tt probing
@@ -386,11 +406,6 @@ impl Engine {
             }
         }
 
-        // checkmate not in classical predict
-        if legal_moves == 0 {
-            return -SearchParameters::Checkmate * 2.0 + ply as f32;
-        }
-
         // store tt
         let entry = self.tt.store(game.get_hash(), depth);
         entry.set(game.get_hash(), best_score, best_move, ply, depth, tt_flag);
@@ -412,7 +427,10 @@ impl Engine {
         while level <= maxdepth {
             let mut pv_line = vec![];
 
+            let before = game.get_hash();
             score = self.negamax(game, level, 0, alpha, beta, &mut pv_line, true, &Move::null(), &Move::null(), false);
+            assert_eq!(before, game.get_hash(), "checking if the hash before and after negamax is equal");
+            
             // did not converge
             if score <= alpha || score >= beta {
                 alpha = -1e9;
@@ -424,7 +442,15 @@ impl Engine {
             beta = score + SearchParameters::Window as f32;
 
             best_move = pv_line[0].clone();
-            println!("Searched {}, Depth {}, Score {}, PV {}", self.searches, level, score, best_move.display());
+            let score_text = if score > SearchParameters::Checkmate {
+                format!("+M{}", SearchParameters::Win - score)
+            } else if score < -SearchParameters::Checkmate {
+                format!("-M{}", score + SearchParameters::Win)
+            } else {
+                format!("{}", score)
+            };
+            
+            println!("Searched {}, Depth {}, PV {}, Score {}", self.searches, level, best_move.display(), score_text);
 
             // check for position limit and checkmates
             if self.searches > maxpositions || score.abs() > SearchParameters::Checkmate - 100.0 {

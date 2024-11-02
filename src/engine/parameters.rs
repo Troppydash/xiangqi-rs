@@ -5,6 +5,7 @@ pub struct SearchParameters;
 impl SearchParameters {
     pub const Window: i32 = 30;
     pub const Checkmate: f32 = 9000.0;
+    pub const Win: f32 = 10000.0;
 
     pub const Size: u64 = 64;
     pub const Buckets: i32 = 2;
@@ -17,6 +18,7 @@ impl SearchParameters {
     pub const SingularExtensionDepthLimit: i32 = 4;
     pub const LMRLegalMovesLimit: i32 = 4;
     pub const LMRDepthLimit: i32 = 3;
+    pub const MaxDepth: i32 = 30;
 
     pub fn LMR(depth: i32, cnt: i32) -> i32 {
         (max(2, depth / 4) + cnt / 12) as i32

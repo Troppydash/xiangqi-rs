@@ -1,5 +1,6 @@
 use std::cmp::{max, min};
 use std::collections::HashMap;
+use fnv::FnvHashMap;
 use rand::Rng;
 use crate::board::condition::Condition;
 use crate::board::condition::Condition::{NONE, RED};
@@ -26,7 +27,8 @@ pub struct Board {
 
     ply: i32,
     last_capture: i32,
-    history: HashMap<u64, u8>,
+    history: FnvHashMap<u64, i32>,
+    exceeded: bool
 }
 
 impl Board {
@@ -46,19 +48,6 @@ impl Board {
             vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
             vec![3, 6, 4, 1, 5, 1, 4, 6, 3],
         ];
-
-        // let board = vec![
-        //     vec![-3, -6, -4, -1, -5, -1, -4, -6, -3],
-        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
-        //     vec![0, -2, 0, 0, 0, 0, 0, -2, 0],
-        //     vec![-7, 0, -7, 0, -7, 0, -7, 0, -7],
-        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
-        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
-        //     vec![7, 0, 7, 0, 7, 0, 7, 0, 7],
-        //     vec![0, 2, 0, 0, 0, 0, 0, 2, 0],
-        //     vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
-        //     vec![3, 6, 4, 1, 5, 1, 4, 6, 3],
-        // ];
 
         let horizontal = vec![
             (-1, 0),
@@ -108,14 +97,15 @@ impl Board {
             hh: 0,
             ply: 0,
             last_capture: 0,
-            history: Default::default(),
+            history: FnvHashMap::default(),
             cache_moves: vec![],
             cache_ok: false,
+            exceeded: false
         };
         item.get_hash();
         item
     }
-    
+
     pub fn get_hash_cell(&self, row: i8, col: i8) -> u64 {
         let row = row as usize;
         let col = col as usize;
@@ -176,6 +166,7 @@ impl Board {
         if grow == -1 || otherrow == -1 {
             println!("{}", self.display());
             println!("uh oh 1");
+            panic!("cannot find general in get_moves");
         }
 
         self.player = self.player.inverse();
@@ -194,7 +185,7 @@ impl Board {
                 println!("{}", self.display());
                 println!("Move {}", mov.display());
                 println!("oh no 2");
-                continue;
+                panic!("move is not legal in get_moves");
             }
 
             self.mov(mov);
@@ -243,6 +234,7 @@ impl Board {
 
         if grow == -1 {
             println!("uh oh");
+            panic!("cannot find general in is_check");
         }
 
         // find moves of other team
@@ -262,12 +254,18 @@ impl Board {
 
     pub fn mov(&mut self, mov: &mut Move) {
         self.cache_ok = false;
-        
+
         // check if capturing general
         if mov.captured.abs() == Piece::GENERAL {
             println!("capturing general?");
+            panic!("trying to capture general");
         }
 
+        // check if exceeded
+        if self.exceeded {
+            panic!("cannot move when drew");
+        }
+        
         // handle null
         if mov.is_null() {
             self.player = self.player.inverse();
@@ -293,7 +291,12 @@ impl Board {
 
         self.ply += 1;
 
-        // TODO: history
+        // push history
+        let hh = self.hh;
+        self.history.insert(hh, self.history.get(&hh).unwrap_or(&0)+1);
+        if *self.history.get(&hh).unwrap() >= 3 {
+            self.exceeded = true;
+        }
     }
 
     pub fn unmov(&mut self, mov: &mut Move) {
@@ -304,6 +307,14 @@ impl Board {
             self.player = self.player.inverse();
             self.ply -= 1;
             return;
+        }
+
+        // pop history
+        let hh = self.hh;
+        self.history.insert(hh, self.history.get(&hh).unwrap_or(&0)-1);
+        self.exceeded = false;
+        if *self.history.get(&hh).unwrap() == 0 {
+            self.history.remove(&hh);
         }
 
         self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
@@ -320,20 +331,20 @@ impl Board {
 
         self.player = self.player.inverse();
         self.ply -= 1;
-
-        // TODO: history
     }
 
     pub fn condition(&mut self) -> Condition {
-        let moves = self.get_moves(false);
-
         // 30 move rule
         if self.ply - self.last_capture >= 60 {
             return Condition::DRAW;
         }
 
-        // TODO: 3 fold rep
+        // 3 fold rep
+        if self.exceeded {
+            return Condition::DRAW;
+        }
 
+        let moves = self.get_moves(false);
         if moves.len() == 0 {
             return self.player.inverse();
         }

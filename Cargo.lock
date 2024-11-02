@@ -659,6 +659,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 name = "xiangqi-rs"
 version = "0.1.0"
 dependencies = [
+ "fnv",
  "rand 0.9.0-alpha.2",
  "serde",
  "serde_json",
