@@ -19,16 +19,13 @@ impl SearchParameters {
     pub const LMRLegalMovesLimit: i32 = 4;
     pub const LMRDepthLimit: i32 = 3;
     pub const MaxDepth: i32 = 30;
+    
+    pub const MvvLvaOffset: f32 = 60000.0 - 256.0;
+    pub const MaxHistoryScore: f32 = Self::MvvLvaOffset - 30.0;
+    pub const PVMoveScore: f32 = 65.0;
+    
 
     pub fn LMR(depth: i32, cnt: i32) -> i32 {
         (max(2, depth / 4) + cnt / 12) as i32
-        // let mut lmr = vec![vec![0; 100]; 1000];
-        // for depth in 3..1000 {
-        //     for cnt in 3..100usize {
-        //         lmr[depth][cnt] = (max(2, depth / 4) + cnt / 12) as i32;
-        //     }
-        // }
-        // 
-        // lmr
     }
 }

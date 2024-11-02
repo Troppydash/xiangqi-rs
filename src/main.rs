@@ -47,8 +47,8 @@ fn start_ws() {
 }
 
 fn main() {
-    start_ws();
-    // test_pos1();
+    // start_ws();
+    test_pos1();
     // test_pos2();
 
     // let mut board = Board::new();

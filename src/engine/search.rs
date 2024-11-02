@@ -176,10 +176,27 @@ impl Engine {
         score + move_advantage
     }
 
-    fn score_moves(&self, game: &mut Board, moves: &mut Vec<Move>) {
+    fn score_moves(&self, game: &mut Board, moves: &mut Vec<Move>, ply: i32, pv_move: &Move, prev_move: &Move) {
         // TODO: add this, but also fix draw and history quiet move stores
         // sort by history, decreasing
-        moves.sort_unstable_by_key(|mov| self.get_history(game, mov));
+        moves.sort_unstable_by_key(|mov| {
+            // self.get_history(game, mov)
+            let mut score = 0.0;
+            
+            let capture = mov.captured;
+            
+            if mov.equals(pv_move) {
+                score += SearchParameters::MvvLvaOffset + SearchParameters::PVMoveScore;
+            } else if capture != Piece::SPACE {
+                score += SearchParameters::MvvLvaOffset + Self::SCORES[capture.abs() as usize];
+            } else {  // TODO: killer move
+                let history_score = self.get_history(game, mov) as f32;
+                score += history_score;
+            }
+            
+            
+            return score.round() as i32;
+        });
         moves.reverse();
     }
 
@@ -212,7 +229,7 @@ impl Engine {
         }
 
         let mut moves = game.get_moves(!in_check);
-        self.score_moves(game, &mut moves);
+        self.score_moves(game, &mut moves, maxply, &Move::null(), &Move::null());
 
 
         for mov in moves.iter_mut() {
@@ -332,7 +349,7 @@ impl Engine {
         }
 
         let mut moves = game.get_moves(false);
-        self.score_moves(game, &mut moves);
+        self.score_moves(game, &mut moves, ply, &tt_move, prev_move);
 
         let mut legal_moves = 0;
         let mut tt_flag = SearchParameters::AlphaFlag;
