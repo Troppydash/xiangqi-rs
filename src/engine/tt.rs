@@ -2,11 +2,11 @@ use crate::board::movee::Move;
 use crate::engine::parameters::SearchParameters;
 
 pub struct TTEntry {
-    hash: u64,
+    pub hash: u64,
     depth: i32,
     score: f32,
     best: Option<Move>,
-    flag: i8,
+    pub flag: i8,
 }
 
 impl TTEntry {
@@ -74,6 +74,10 @@ impl TTEntry {
         }
 
         self.score = score;
+    }
+    
+    pub fn get_flag(&self) -> i8 {
+        self.flag
     }
 }
 

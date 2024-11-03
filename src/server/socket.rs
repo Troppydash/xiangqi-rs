@@ -50,7 +50,7 @@ fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
     
     // run analysis
     let mut engine = Engine::new();
-    let (best_move, score) = engine.search(&mut board, 100, instruct.limit);
+    let (best_move, score) = engine.search(&mut board, 50, instruct.limit);
     let response = Response {
         method: "analyze".to_string(),
         score: score,

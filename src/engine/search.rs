@@ -1,3 +1,4 @@
+use std::os::linux::raw::stat;
 use crate::board::board::Board;
 use crate::board::condition::Condition::{BLACK, DRAW, RED};
 use crate::board::movee::Move;
@@ -10,6 +11,8 @@ pub struct Engine {
     history: Vec<Vec<Vec<i32>>>,
     killers: Vec<Vec<Move>>,
     counter: Vec<Vec<Vec<Move>>>,
+    
+    maxpositions: i32,
 
     // debug
     searches: i32,
@@ -133,6 +136,7 @@ impl Engine {
             history: vec![vec![vec![0; 90]; 90]; 2],
             killers: vec![vec![Move::null(); SearchParameters::MaxKillers as usize]; SearchParameters::MaxDepth as usize],
             counter: vec![vec![vec![Move::null(); 90]; 90]; 2],
+            maxpositions: 0,
             searches: 0,
         }
     }
@@ -231,11 +235,15 @@ impl Engine {
         } else if cond == DRAW {
             return 0.0;
         }
+        
+        if self.searches > self.maxpositions {
+            return 0.0;
+        }
 
         if maxply + ply >= SearchParameters::MaxDepth {
             return self.classic_predict(game, ply);
         }
-
+        
         let mut best_score = self.classic_predict(game, ply);
         let in_check = ply <= 2 && game.is_check();
 
@@ -253,10 +261,12 @@ impl Engine {
 
         for mov in moves.iter_mut() {
             let mut child_pv_line = vec![];
-
+            
+            // todo: static exchange
+            
             game.mov(mov);
             let score = -self.qsearch(
-                game, -beta, -alpha, &mut child_pv_line, ply + 1, maxply,
+                game, -beta, -alpha, &mut child_pv_line, ply + 1, maxply
             );
             game.unmov(mov);
 
@@ -344,6 +354,10 @@ impl Engine {
                do_null: bool, prev_move: &Move, skip_move: &Move, is_extended: bool,
     ) -> f32 {
         self.searches += 1;
+        
+        if ply >= SearchParameters::MaxDepth {
+            return self.classic_predict(game, ply);
+        }
 
         // conditions check
         let cond = game.condition();
@@ -355,9 +369,15 @@ impl Engine {
             return 0.0;
         }
 
+        // fail-safe in case we fuck something up
+        if self.searches > self.maxpositions {
+            return 0.0;
+        }
+        
         let in_check = game.is_check();
         let is_root = ply == 0;
         let is_pv_node = beta - alpha != 1.0;
+        let mut can_futility_prune = false;
 
         // check extension
         if in_check {
@@ -375,7 +395,11 @@ impl Engine {
         if mov.is_some() {
             tt_move = mov.unwrap();
         }
-
+        let tt_hit = entry.hash == game.get_hash(); 
+        let can_sve = entry.flag == SearchParameters::ExactFlag || entry.flag == SearchParameters::BetaFlag;  // need to be here for rust is a crybaby
+        let caniid = entry.flag == SearchParameters::BetaFlag;
+        
+        // use tt score
         if should_use && !is_root && !skip_move.equals(&tt_move) {
             return tt_score;
         }
@@ -402,6 +426,39 @@ impl Engine {
                 return beta;
             }
         }
+        
+        // razoring
+        if depth <= 2 && !is_pv_node && !in_check {
+            let static_score = self.classic_predict(game, ply);
+            if (static_score + (SearchParameters::FutilityMargins[depth as usize]*3) as f32) < alpha {
+                let score = self.qsearch(game, alpha, beta, &mut vec![], ply, 0);
+                if score < alpha {
+                    return alpha;
+                }
+            }
+        }
+        
+        // futility pruning
+        if depth <= SearchParameters::FutilityPruningDepthLimit
+            && !is_pv_node
+            && !in_check
+            && alpha < SearchParameters::Checkmate
+            && beta < SearchParameters::Checkmate {
+            let static_score = self.classic_predict(game, ply);
+            let margin = SearchParameters::FutilityMargins[depth as usize] as f32;
+            can_futility_prune = static_score + margin <= alpha;
+        }
+        
+        // internal iterative deepening
+        if depth >= SearchParameters::IIDDepthLimit
+            && (is_pv_node || caniid)
+            && tt_move.equals(&Move::null()) {
+            let mut child_pv_line = vec![];
+            self.negamax(game, depth-SearchParameters::IIDDepthReduction-1, ply+1, -beta, -alpha, &mut child_pv_line, true, &Move::null(), &Move::null(), is_extended);
+            if child_pv_line.len() > 0 {
+                tt_move = child_pv_line[0].clone();
+            }
+        }
 
         let mut moves = game.get_moves(false);
         self.score_moves(game, &mut moves, ply, &tt_move, prev_move);
@@ -420,15 +477,54 @@ impl Engine {
 
             game.mov(mov);
             legal_moves += 1;
-
+            
+            // late move pruning
+            if depth <= 5
+                && !is_pv_node
+                && !in_check
+                && legal_moves > SearchParameters::LateMovePruningMargins[depth as usize] {
+                let tactical = game.is_check() || !mov.is_quiet();
+                if !tactical {
+                    game.unmov(mov);
+                    continue;
+                }
+            }
+            
+            // futility prune
+            if can_futility_prune
+                && legal_moves > 1
+                && !game.is_check()
+                && mov.is_quiet() {
+                game.unmov(mov);
+                continue;
+            }
 
             let mut score;
 
             if legal_moves == 1 {
-                let next_depth = depth - 1;
+                let mut next_depth = depth - 1;
 
-                // singular extension: todo
-
+                // singular extension
+                if !is_extended
+                    && depth >= SearchParameters::SingularExtensionDepthLimit
+                    && tt_move.equals(mov)
+                    && is_pv_node
+                    && tt_hit
+                    && can_sve {
+                    
+                    game.unmov(mov);
+                    
+                    let score_to_beat = tt_score - SearchParameters::SingularMoveMargin;
+                    let R = 3 + depth / 6;
+                    
+                    let next_best_score = self.negamax(game, depth - 1 - R, ply+1, score_to_beat, score_to_beat+1.0, &mut vec![], true, prev_move, mov, true);
+                    if next_best_score <= score_to_beat {
+                        next_depth += SearchParameters::SingularMoveExtension;
+                    }
+                    
+                    game.mov(mov);
+                }
+                
                 score = -self.negamax(game, next_depth, ply + 1, -beta, -alpha, &mut child_pv_line, true, mov, &Move::null(), is_extended);
             } else {
                 // late move reduction
@@ -479,7 +575,7 @@ impl Engine {
                 self.decrement_history(game, mov);
             }
         }
-
+        
         // store tt
         let entry = self.tt.store(game.get_hash(), depth);
         entry.set(game.get_hash(), best_score, best_move, ply, depth, tt_flag);
@@ -490,6 +586,7 @@ impl Engine {
 
     pub fn search(&mut self, game: &mut Board, maxdepth: i32, maxpositions: i32) -> (Move, f32) {
         self.searches = 0;
+        self.maxpositions = maxpositions;
 
 
         let mut best_move = Move::null();
@@ -505,8 +602,16 @@ impl Engine {
             score = self.negamax(game, level, 0, alpha, beta, &mut pv_line, true, &Move::null(), &Move::null(), false);
             assert_eq!(before, game.get_hash(), "checking if the hash before and after negamax is equal");
 
+            if self.searches > self.maxpositions {
+                if best_move.is_null() && level == 1 {
+                    best_move = pv_line[0].clone();
+                }
+                break;
+            }
+            
             // did not converge
             if score <= alpha || score >= beta {
+                println!("restart");
                 alpha = -1e9;
                 beta = 1e9;
                 continue;

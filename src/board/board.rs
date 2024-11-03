@@ -142,8 +142,12 @@ impl Board {
         if !captures && self.cache_ok {
             return self.cache_moves.clone();
         }
-
-        let mut buffer = self.get_all_moves();
+        
+        let mut buffer = if captures && self.cache_ok {
+            self.cache_moves.clone()
+        } else {
+            self.get_all_moves()
+        };
 
         // find own general and other
         let sign = if self.player == Condition::RED { 1 } else { -1 };
