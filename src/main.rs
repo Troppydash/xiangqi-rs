@@ -58,15 +58,40 @@ fn test_pos3() {
     engine.search(&mut board, 15, 1000000);
 }
 
+fn test_basic() {
+    let mut board = Board::new();
+    println!("{}", board.display());
+    let mut engine = Engine::new();
+    engine.search(&mut board, 15, 2000000);
+}
+
+fn test_pos4() {
+    // level 7 leads to -m2, B8B9
+    let moves = "B3BX,H8E8,H3B3,IXI8,I1I3,HXG8,I3D3,FXE9,D3D7,B8B7,D7C7,B7B1,BXB1,AXA8,B3E3,I8H8,H1I3,E8E4,F1E2,GXE8,B1B7,H8H6,A1B1,H6A6,B7B8,A8B8,B1B8,EXFX";
+    let mut board = Board::new();
+    let moves: Vec<&str> = moves.split(",").collect::<Vec<&str>>();
+    let moves = moves.iter().map(|st| Move::from_string(&st.to_string())).collect::<Option<Vec<Move>>>();
+    let mut moves = moves.unwrap();
+
+    for mov in moves.iter_mut() {
+        board.try_move(mov);
+    }
+
+    println!("{}", board.display());
+    let mut engine = Engine::new();
+    engine.search(&mut board, 15, 1000000);
+}
+
 fn start_ws() {
     serve();
 }
 
 fn main() {
-    // start_ws();
+    start_ws();
     // test_pos1();
-    test_pos2();
+    // test_basic();
     // test_pos3();
+    // test_pos4();
 
     // let mut board = Board::new();
     // println!("{}", board.display());

@@ -12,23 +12,23 @@ impl SearchParameters {
     pub const BetaFlag: i8 = 2;
     pub const ExactFlag: i8 = 3;
 
-    pub const StaticNullMovePruningBaseMargin: i32 = 30;
-    pub const NMRDepthLimit: i32 = 2;
-    
+    pub const StaticNullMovePruningBaseMargin: i32 = 10;
+    pub const NMRDepthLimit: i32 = 4;
+
     pub const SingularExtensionDepthLimit: i32 = 4;
-    pub const SingularMoveMargin: f32 = 50.0;
+    pub const SingularMoveMargin: f32 = 20.0;
     pub const SingularMoveExtension: i32 = 1;
-    
+
     pub const LMRLegalMovesLimit: i32 = 4;
     pub const LMRDepthLimit: i32 = 3;
     pub const LateMovePruningMargins: [i32; 6] = [0,8,12,16,20,24];
 
     pub const FutilityPruningDepthLimit: i32 = 8;
     pub const FutilityMargins: [i32;9] = [0, 20, 25, 30, 35, 40, 45, 50, 55];
-    
+
     pub const IIDDepthReduction: i32 = 2;
     pub const IIDDepthLimit: i32 = 2;
-    
+
     pub const MaxDepth: i32 = 100;
 
     pub const MaxKillers: i32 = 2;
@@ -41,6 +41,6 @@ impl SearchParameters {
 
 
     pub fn LMR(depth: i32, cnt: i32) -> i32 {
-        (max(2, depth / 4) + cnt / 12) as i32
+        (max(2, depth / 4) + cnt / 12)
     }
 }
