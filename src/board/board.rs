@@ -9,8 +9,9 @@ use crate::board::piece::Piece;
 
 #[derive(Clone)]
 pub struct Board {
-    // states
+    /// Board state
     pub state: Vec<Vec<i8>>,
+    /// Current player
     pub player: Condition,
 
     // caches
@@ -18,23 +19,27 @@ pub struct Board {
     horse: Vec<(i8, i8)>,
     diagonal: Vec<(i8, i8)>,
 
+    // rng for hashes
     rng: Vec<Vec<Vec<u64>>>,
     rng_black: u64,
     hh: u64,
 
+    // cached move computation
     cache_moves: Vec<Move>,
     cache_ok: bool,
 
+    // drawing check
     ply: i32,
-    last_capture: i32,
+    last_capture: i32,  // last capture ply
     history: FnvHashMap<u64, i32>,
-    exceeded: bool
+    exceeded: bool  // is a draw
 }
 
 impl Board {
     pub const ROWS: usize = 10;
     pub const COLS: usize = 9;
 
+    /// Creates a board
     pub fn new() -> Self {
         let board = vec![
             vec![-3, -6, -4, -1, -5, -1, -4, -6, -3],
@@ -106,7 +111,8 @@ impl Board {
         item
     }
 
-    pub fn get_hash_cell(&self, row: i8, col: i8) -> u64 {
+    /// Gets the hash for the specific cell
+    fn get_hash_cell(&self, row: i8, col: i8) -> u64 {
         let row = row as usize;
         let col = col as usize;
 
@@ -122,6 +128,7 @@ impl Board {
         }
     }
 
+    /// Gets the board hash
     pub fn get_hash(&mut self) -> u64 {
         if self.hh == 0 {
             for row in 0..Self::ROWS {
@@ -138,6 +145,7 @@ impl Board {
         }
     }
 
+    /// Get a list of moves
     pub fn get_moves(&mut self, captures: bool) -> Vec<Move> {
         if !captures && self.cache_ok {
             return self.cache_moves.clone();
@@ -173,10 +181,9 @@ impl Board {
             panic!("cannot find general in get_moves");
         }
 
-        self.player = self.player.inverse();
+        self.next_turn();
         let mut potential = self.get_potentials(grow, gcol);
-        self.player = self.player.inverse();
-
+        self.next_turn();
 
         let mut updated_buffer = vec![];
 
@@ -206,19 +213,24 @@ impl Board {
 
         updated_buffer
     }
+    
+    /// Flips player turn
+    fn next_turn(&mut self) {
+        self.cache_ok = false;
+        self.player = self.player.inverse();
+    }
 
 
     /// Checks if the last move resulted a check
     pub fn last_check(&mut self) -> bool {
         // check if the last player will be captured
-        self.player = self.player.inverse();
+        self.next_turn();
         let result = self.is_check();
-        self.player = self.player.inverse();
+        self.next_turn();
 
         result
     }
-
-
+    
     /// Checks if the current king is in check
     pub fn is_check(&mut self) -> bool {
         let sign = if self.player == Condition::RED { 1 } else { -1 };
@@ -242,23 +254,21 @@ impl Board {
         }
 
         // find moves of other team
-        self.player = self.player.inverse();
+        self.next_turn();
         self.cache_ok = false;
         for mov in self.get_all_moves() {
             if mov.endx == gcol && mov.endy == grow {
-                self.player = self.player.inverse();
+                self.next_turn();
                 return true;
             }
         }
 
-        self.player = self.player.inverse();
+        self.next_turn();
         return false;
     }
 
-
+    /// Performs the move
     pub fn mov(&mut self, mov: &mut Move) {
-        self.cache_ok = false;
-
         // check if capturing general
         if mov.captured.abs() == Piece::GENERAL {
             println!("capturing general?");
@@ -272,7 +282,7 @@ impl Board {
 
         // handle null
         if mov.is_null() {
-            self.player = self.player.inverse();
+            self.next_turn();
             self.ply += 1;
             return;
         }
@@ -291,7 +301,7 @@ impl Board {
 
         self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
 
-        self.player = self.player.inverse();
+        self.next_turn();
 
         self.ply += 1;
 
@@ -303,12 +313,11 @@ impl Board {
         }
     }
 
+    /// Undo the move
     pub fn unmov(&mut self, mov: &mut Move) {
-        self.cache_ok = false;
-
         // handle null
         if mov.is_null() {
-            self.player = self.player.inverse();
+            self.next_turn();
             self.ply -= 1;
             return;
         }
@@ -333,10 +342,11 @@ impl Board {
         self.hh ^= self.get_hash_cell(mov.starty, mov.startx);
         self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
 
-        self.player = self.player.inverse();
+        self.next_turn();
         self.ply -= 1;
     }
 
+    /// Returns the board summary state
     pub fn condition(&mut self) -> Condition {
         // 30 move rule
         if self.ply - self.last_capture >= 60 {
@@ -355,7 +365,7 @@ impl Board {
         Condition::NONE
     }
 
-    // make a move, where the move is unverified
+    /// make a move, where the move is unverified
     pub fn try_move(&mut self, mut mov: &mut Move) -> bool {
         if !self.is_valid_move(&mov) {
             return false;
@@ -376,6 +386,7 @@ impl Board {
         true
     }
 
+    /// Returns a string of the board
     pub fn display(&self) -> String {
         let cols: Vec<char> = "ABCDEFGHIJK".chars().collect();
         let rows: Vec<char> = "X987654321".chars().collect();
@@ -419,10 +430,14 @@ impl Board {
 
         out.join("\n")
     }
+    
+    
+    
 }
 
 /// MOVES ///
 impl Board {
+    /// Gets the cell the player is on
     fn get_cell_player(&self, row: i8, col: i8) -> Condition {
         let value = self.state[row as usize][col as usize];
         if value == 0 {
@@ -435,10 +450,12 @@ impl Board {
         return Condition::BLACK;
     }
 
+    /// Is position inside grid
     fn is_inbound(&self, row: i8, col: i8) -> bool {
         !(row < 0 || row >= Self::ROWS as i8 || col < 0 || col >= Self::COLS as i8)
     }
 
+    /// Is move ok
     fn is_valid_move(&self, mov: &Move) -> bool {
         if !self.is_inbound(mov.starty, mov.startx)
             || !self.is_inbound(mov.endy, mov.endx) {
@@ -456,7 +473,7 @@ impl Board {
         return true;
     }
 
-
+    /// Returns all possible (maybe invalid for checks) moves
     fn get_all_moves(&mut self) -> Vec<Move> {
         let mut mov_buffer = vec![];
 
@@ -501,7 +518,7 @@ impl Board {
             mov.captured = self.state[mov.endy as usize][mov.endx as usize];
         }
 
-        return mov_buffer;
+        mov_buffer
     }
 
 
@@ -577,6 +594,7 @@ impl Board {
         return false;
     }
 
+    /// Return potential attacker squares
     fn get_potentials(&self, grow: i8, gcol: i8) -> Vec<(i8, i8)> {
         let sign = if self.player == Condition::RED { 1 } else { -1 };
         let mut attacks = vec![];

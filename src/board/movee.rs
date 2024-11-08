@@ -8,6 +8,7 @@ pub struct Move {
     pub endx: i8,
     pub endy: i8,
     pub captured: i8,
+    /// cache of last capture ply, set when moving
     pub last_capture: i32,
 }
 
@@ -47,15 +48,15 @@ impl Move {
     pub fn is_null(&self) -> bool {
         self.startx == -1
     }
-    
+
     pub fn is_quiet(&self) -> bool {
         self.captured == Piece::SPACE
     }
-    
+
     pub fn start_sq(&self) -> usize {
         (self.starty * 9 + self.startx) as usize
     }
-    
+
     pub fn end_sq(&self) -> usize {
         (self.endy * 9 + self.endx) as usize
     }
