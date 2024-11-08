@@ -187,8 +187,7 @@ impl Engine {
 
     fn score_moves(&self, game: &mut Board, moves: &mut Vec<Move>, ply: i32, pv_move: &Move, prev_move: &Move) {
         let ply = ply as usize;
-
-        // TODO: add this, but also fix draw and history quiet move stores
+        
         // sort by history, decreasing
         moves.sort_unstable_by_key(|mov| {
             let mut score = 0;

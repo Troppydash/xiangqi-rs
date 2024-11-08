@@ -142,7 +142,7 @@ impl Board {
         if !captures && self.cache_ok {
             return self.cache_moves.clone();
         }
-        
+
         let mut buffer = if captures && self.cache_ok {
             self.cache_moves.clone()
         } else {
@@ -269,7 +269,7 @@ impl Board {
         if self.exceeded {
             panic!("cannot move when drew");
         }
-        
+
         // handle null
         if mov.is_null() {
             self.player = self.player.inverse();

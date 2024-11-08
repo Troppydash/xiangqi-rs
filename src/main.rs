@@ -62,7 +62,7 @@ fn test_basic() {
     let mut board = Board::new();
     println!("{}", board.display());
     let mut engine = Engine::new();
-    engine.search(&mut board, 15, 2000000);
+    engine.search(&mut board, 15, 4000000);
 }
 
 fn test_pos4() {
@@ -86,7 +86,18 @@ fn start_ws() {
     serve();
 }
 
+fn test(msg: &mut Vec<i32>) {
+    // pass
+    msg.push(12);
+}
+
+fn show(msg: &Vec<i32>) {
+    println!("{}", msg.len());
+}
+
 fn main() {
+    // let num: u32 = 12;
+    
     start_ws();
     // test_pos1();
     // test_basic();

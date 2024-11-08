@@ -2,6 +2,8 @@ use std::net::{TcpListener, TcpStream};
 use std::thread::spawn;
 use tungstenite::{accept, WebSocket};
 use serde::{Deserialize, Serialize};
+use futures::executor::ThreadPool;
+use futures::task::SpawnExt;
 use crate::board::board::Board;
 use crate::board::movee::Move;
 use crate::engine::search::Engine;
@@ -46,10 +48,10 @@ fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
 
     println!("{}", board.display());
     println!("{}", moves.iter().map(Move::display).collect::<Vec<String>>().join(","));
-    
+
+    let mut engine = Engine::new();
     
     // run analysis
-    let mut engine = Engine::new();
     let (best_move, score) = engine.search(&mut board, 50, instruct.limit);
     let response = Response {
         method: "analyze".to_string(),
@@ -61,6 +63,7 @@ fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
 }
 
 fn handle_connection(mut websocket: WebSocket<TcpStream>) {
+
     loop {
         let msg = websocket.read();
         if let Err(_) = msg {
@@ -82,6 +85,9 @@ fn handle_connection(mut websocket: WebSocket<TcpStream>) {
             match instruct.method.as_str() {
                 "analyze" => {
                     analyze_board(&mut websocket, &instruct);
+                    
+                    // TODO: test pondering
+                    
                 }
 
                 _ => {}
@@ -92,12 +98,16 @@ fn handle_connection(mut websocket: WebSocket<TcpStream>) {
 
 
 pub fn serve() {
-    let server = TcpListener::bind("127.0.0.1:3030").unwrap();
+    let server = TcpListener::bind("0.0.0.0:3030").unwrap();
+    let pool = ThreadPool::builder()
+        .pool_size(10)
+        .create().expect("failed to create thread pool");
+
     for stream in server.incoming() {
-        spawn(move || {
+        pool.spawn(async {
             // handle
             let websocket = accept(stream.unwrap()).unwrap();
             handle_connection(websocket);
-        });
+        }).unwrap();
     }
 }
