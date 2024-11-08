@@ -1,3 +1,4 @@
+use std::env;
 use std::net::{TcpListener, TcpStream};
 use std::thread::spawn;
 use tungstenite::{accept, WebSocket};
@@ -50,7 +51,7 @@ fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
     println!("{}", moves.iter().map(Move::display).collect::<Vec<String>>().join(","));
 
     let mut engine = Engine::new();
-    
+
     // run analysis
     let (best_move, score) = engine.search(&mut board, 50, instruct.limit);
     let response = Response {
@@ -85,7 +86,7 @@ fn handle_connection(mut websocket: WebSocket<TcpStream>) {
             match instruct.method.as_str() {
                 "analyze" => {
                     analyze_board(&mut websocket, &instruct);
-                    
+
                     // TODO: test pondering
                     
                 }
@@ -98,7 +99,16 @@ fn handle_connection(mut websocket: WebSocket<TcpStream>) {
 
 
 pub fn serve() {
-    let server = TcpListener::bind("0.0.0.0:3030").unwrap();
+    let args: Vec<String> = env::args().collect();
+    let port = if args.len() == 2  {
+        args[1].to_string()
+    } else {
+        "3030".to_string()
+    };
+    
+    println!("websocket started on port {}", port);
+
+    let server = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
     let pool = ThreadPool::builder()
         .pool_size(10)
         .create().expect("failed to create thread pool");

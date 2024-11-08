@@ -98,11 +98,11 @@ fn show(msg: &Vec<i32>) {
 fn main() {
     // let num: u32 = 12;
     
-    // start_ws();
-    test_pos1();
+    start_ws();
+    // test_pos1();
     // test_basic();
-    test_pos3();
-    test_pos4();
+    // test_pos3();
+    // test_pos4();
 
     // let mut board = Board::new();
     // println!("{}", board.display());
