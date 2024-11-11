@@ -20,10 +20,6 @@ pub struct Engine {
 }
 
 impl Engine {
-    // piece lookup
-    const SCORES: [i32; 8] = [0, 20, 50, 100, 20, 10, 35, 10];
-
-
     pub fn new() -> Self {
         Self {
             tt: TT::new(),
@@ -40,7 +36,8 @@ impl Engine {
             return 0;
         }
         
-        return Eval::evaluate(game);    
+        let eval = Eval::new();
+        return eval.evaluate(game);    
     }
 
     fn score_moves(&self, game: &mut Board, moves: &mut Vec<Move>, ply: i32, pv_move: &Move, prev_move: &Move) {
@@ -122,8 +119,7 @@ impl Engine {
             let mut child_pv_line = vec![];
 
             // todo: static exchange
-
-            game.mov(mov);
+            game.mov(mov);            
             let score = -self.qsearch(
                 game, -beta, -alpha, &mut child_pv_line, ply + 1, maxply
             );

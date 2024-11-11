@@ -20,6 +20,9 @@ pub struct Board {
     mg_table: Vec<Vec<Vec<i32>>>,
     eg_table: Vec<Vec<Vec<i32>>>,
 
+    // cached general position
+    general: [i8; 4],
+
     // cached scores, red and black
     pub mg_score: [i32; 2],
     pub eg_score: [i32; 2],
@@ -107,6 +110,7 @@ impl Board {
         let mut item = Self {
             state: board,
             player: Condition::RED,
+            general: [9, 4, 0, 4],
             eg_table: mg,
             mg_table: eg,
             mg_score: [0, 0],
@@ -181,28 +185,11 @@ impl Board {
         };
 
         // find own general and other
-        let sign = if self.player == Condition::RED { 1 } else { -1 };
-        let mut grow = -1;
-        let mut gcol = -1;
-        let mut otherrow = -1;
-        let mut othercol = -1;
-        for row in 0..Self::ROWS {
-            for col in 0..Self::COLS {
-                if self.state[row][col] == sign * Piece::GENERAL {
-                    grow = row as i8;
-                    gcol = col as i8;
-                } else if self.state[row][col] == -sign * Piece::GENERAL {
-                    otherrow = row as i8;
-                    othercol = col as i8;
-                }
-            }
-        }
+        let grow = self.general[2*self.player as usize];
+        let gcol = self.general[2*self.player as usize + 1];
+        let otherrow = self.general[2*self.player.inverse() as usize];
+        let othercol = self.general[2*self.player.inverse() as usize + 1];
 
-        if grow == -1 || otherrow == -1 {
-            println!("{}", self.display());
-            println!("uh oh 1");
-            panic!("cannot find general in get_moves");
-        }
 
         self.next_turn();
         let mut potential = self.get_potentials(grow, gcol);
@@ -215,12 +202,12 @@ impl Board {
                 continue;
             }
 
-            if !self.is_valid_move(&mov) {
-                println!("{}", self.display());
-                println!("Move {}", mov.display());
-                println!("oh no 2");
-                panic!("move is not legal in get_moves");
-            }
+            // if !self.is_valid_move(&mov) {
+            //     println!("{}", self.display());
+            //     println!("Move {}", mov.display());
+            //     println!("oh no 2");
+            //     panic!("move is not legal in get_moves");
+            // }
 
             self.mov(mov);
             if !self.will_check(&mov, &mut potential, grow, gcol, otherrow, othercol) {
@@ -256,26 +243,10 @@ impl Board {
 
     /// Checks if the current king is in check
     pub fn is_check(&mut self) -> bool {
-        let sign = if self.player == Condition::RED { 1 } else { -1 };
-
         // find own general
-        let mut grow = -1;
-        let mut gcol = -1;
-        for row in 0..Self::ROWS {
-            for col in 0..Self::COLS {
-                if self.state[row][col] == sign * Piece::GENERAL {
-                    grow = row as i8;
-                    gcol = col as i8;
-                    break;
-                }
-            }
-        }
-
-        if grow == -1 {
-            println!("uh oh");
-            panic!("cannot find general in is_check");
-        }
-
+        let grow = self.general[2*self.player as usize];
+        let gcol = self.general[2*self.player as usize + 1];
+      
         // find moves of other team
         self.next_turn();
         self.cache_ok = false;
@@ -350,6 +321,15 @@ impl Board {
             self.eg_score[other] -= self.eg_table[otherpiece as usize - 1][otherend.0][otherend.1];
         }
 
+        // move general
+        if self.state[mov.starty as usize][mov.startx as usize] == Piece::GENERAL {
+            self.general[0] = mov.endy;
+            self.general[1] = mov.endx;
+        } else if self.state[mov.starty as usize][mov.startx as usize] == -Piece::GENERAL {
+            self.general[2] = mov.endy;
+            self.general[3] = mov.endx;
+        }
+
         // perform move
         let ch = self.state[mov.starty as usize][mov.startx as usize];
         self.state[mov.starty as usize][mov.startx as usize] = Piece::SPACE;
@@ -418,6 +398,15 @@ impl Board {
             self.eg_score[self.player as usize] += self.eg_table[otherpiece as usize - 1][otherend.0][otherend.1];
         }
 
+        // move general
+        if self.state[mov.endy as usize][mov.endx as usize] == Piece::GENERAL {
+            self.general[0] = mov.starty;
+            self.general[1] = mov.startx;
+        } else if self.state[mov.endy as usize][mov.endx as usize] == -Piece::GENERAL {
+            self.general[2] = mov.starty;
+            self.general[3] = mov.startx;
+        }
+
         // perform reverse
         self.state[mov.starty as usize][mov.startx as usize] = self.state[mov.endy as usize][mov.endx as usize];
         self.state[mov.endy as usize][mov.endx as usize] = mov.captured;
@@ -431,13 +420,7 @@ impl Board {
 
     /// Returns the board summary state
     pub fn condition(&mut self) -> Condition {
-        // 30 move rule
-        if self.ply - self.last_capture >= 60 {
-            return Condition::DRAW;
-        }
-
-        // 3 fold rep
-        if self.exceeded {
+        if self.is_draw() {
             return Condition::DRAW;
         }
 
@@ -780,7 +763,7 @@ impl Board {
     }
 
     /// Returns all possible (maybe invalid for checks) moves
-    fn get_all_moves(&self) -> Vec<Move> {
+    pub fn get_all_moves(&self) -> Vec<Move> {
         let mut mov_buffer = vec![];
 
         let sign = if self.player == RED { 1 } else { -1 };
@@ -938,7 +921,7 @@ impl Board {
     }
 
 
-    fn soldier_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
+    pub fn soldier_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
         let sign = if self.player == Condition::RED { 1 } else { -1 };
         let direction = -sign;
 
@@ -961,22 +944,11 @@ impl Board {
         if !((self.player == Condition::RED && row <= 4) || (self.player == Condition::BLACK && row >= 5)) {
             return false;
         }
-
-        let sign = if self.player == Condition::RED { 1 } else { -1 };
-        let direction = -sign;
-
-        let directions = vec![(direction, 0), (0, 1), (0, -1)];
-        for (drow, dcol) in directions {
-            let mov = Move::new(row, col, row + drow, col + dcol);
-            if grow == mov.endy && gcol == mov.endx {
-                return true;
-            }
-        }
-
-        return false;
+        
+        return true;
     }
 
-    fn cannon_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
+    pub fn cannon_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
         let search = if !(dcol == 0 && drow == 0) {
             &vec![(drow, dcol)]
         } else {
@@ -1018,7 +990,7 @@ impl Board {
         row == grow || col == gcol
     }
 
-    fn chariot_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
+    pub fn chariot_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
         let search = if !(dcol == 0 && drow == 0) {
             &vec![(drow, dcol)]
         } else {
@@ -1052,7 +1024,7 @@ impl Board {
         row == grow || col == gcol
     }
 
-    fn advisor_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
+    pub fn advisor_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
         for (drow, dcol) in &self.diagonal {
             let mov = Move::new(row, col, row + drow, col + dcol);
             if !(mov.endx >= 3 && mov.endx <= 5) {
@@ -1075,7 +1047,7 @@ impl Board {
         }
     }
 
-    fn elephant_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
+    pub fn elephant_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
         for (drow, dcol) in &self.diagonal {
             if self.player == RED {
                 if !(5 <= row + 2 * drow && row + 2 * drow <= 9) {
@@ -1102,7 +1074,7 @@ impl Board {
         }
     }
 
-    fn general_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
+    pub fn general_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>) {
         for (drow, dcol) in &self.horizontal {
             let mov = Move::new(row, col, row + drow, col + dcol);
             if !(mov.endx >= 3 && mov.endx <= 5) {
@@ -1125,7 +1097,7 @@ impl Board {
         }
     }
 
-    fn horse_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
+    pub fn horse_moves(&self, row: i8, col: i8, moves: &mut Vec<Move>, dcol: i8, drow: i8) {
         let search = if !(dcol == 0 && drow == 0) {
             &vec![(drow, dcol)]
         } else {
@@ -1153,12 +1125,6 @@ impl Board {
     }
 
     fn horse_potential(&self, row: i8, col: i8, grow: i8, gcol: i8) -> bool {
-        for (drow, dcol) in &self.horse {
-            let mov = Move::new(row, col, row + drow, col + dcol);
-            if mov.endx == gcol && mov.endy == grow {
-                return true;
-            }
-        }
-        return false;
+        return (row - grow).abs() * (col - gcol).abs() == 2;
     }
 }

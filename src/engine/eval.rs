@@ -3,7 +3,11 @@ use std::fs;
 use crate::board::board::Board;
 use crate::board::piece::Piece;
 
-pub struct Eval;
+pub struct Eval {
+    pub tempo_score: i32,
+    pub mobility_mg: [i32; 7],
+    pub mobility_eg: [i32; 7],
+}
 
 impl Eval {
     // phase constants
@@ -15,16 +19,73 @@ impl Eval {
     const AdvisorPhase: i32 = 1;
     const TotalPhase: i32 = Self::SoliderPhase * 10 + Self::HorsePhase * 4 + Self::ChariotPhase * 4 + Self::ElephantPhase * 4 + Self::AdvisorPhase * 4 + Self::CannonPhase * 4;
 
-    // piece square tables
-
-    // base values
+    // base values, unused
     const BasePieceScore: [i32; 7] = [20, 50, 100, 20, 10, 35, 10];
 
+    
+    pub fn new() -> Self {
+        Self {
+            tempo_score: 0,
+            mobility_mg: [0;7],
+            mobility_eg: [0;7],
+        }
+    }
 
-    pub fn evaluate(board: &mut Board) -> i32 {
-        let mg_eval = board.mg_score[board.player as usize] - board.mg_score[board.player.inverse() as usize];
-        let eg_eval = board.eg_score[board.player as usize] - board.eg_score[board.player.inverse() as usize];
-
+    pub fn evaluate(&self, board: &mut Board) -> i32 {
+        let mut mg_eval = board.mg_score[board.player as usize] - board.mg_score[board.player.inverse() as usize];
+        let mut eg_eval = board.eg_score[board.player as usize] - board.eg_score[board.player.inverse() as usize];
+        
+        // also evaluate mobility
+        for row in 0..10 {
+            for col in 0..9 {
+                if board.state[row][col] == Piece::SPACE {
+                    continue;
+                }
+                
+                let mut piece = board.state[row][col];
+                let mut sign = 1;
+                if piece < 0 {
+                    sign = -1;
+                    piece = -piece;
+                    board.player = board.player.inverse();
+                }                
+                
+                let row = row as i8;
+                let col = col as i8;
+                let mut moves = vec![];
+                match piece {
+                    Piece::SOLDIER => {
+                        board.soldier_moves(row, col, &mut moves);
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * moves.len() as i32;
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * moves.len() as i32;
+                    },
+                    Piece::CANNON => {
+                        board.cannon_moves(row, col, &mut moves, 0, 0);
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len() - 7) as i32;
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len() - 7) as i32;
+                    },
+                    Piece::CHARIOT => {
+                        board.chariot_moves(row, col, &mut moves, 0, 0);
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len()-7) as i32;
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len()-7) as i32;
+                    },
+                    Piece::HORSE => {
+                        board.horse_moves(row, col, &mut moves, 0,0 );
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len()-2) as i32;
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len()-2) as i32;
+                    },
+                    _ => {}
+                }
+                
+                if sign == -1 {
+                    board.player = board.player.inverse();
+                }
+            }
+        }
+        
+        // add tempo
+        mg_eval += self.tempo_score;
+        
         // linear interpolate between mg and eg eval
         // https://www.chessprogramming.org/Tapered_Eval
         let phase = Self::compute_phase(board);
@@ -33,9 +94,7 @@ impl Eval {
 
 
     fn compute_phase(board: &mut Board) -> i32 {
-
         // https://www.chessprogramming.org/Tapered_Eval
-
         let mut phase = Self::TotalPhase;
         let lookup = [0, Self::AdvisorPhase, Self::CannonPhase, Self::ChariotPhase, Self::ElephantPhase, 0, Self::HorsePhase, Self::SoliderPhase];
         for row in board.state.iter() {
