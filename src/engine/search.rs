@@ -36,46 +36,11 @@ impl Engine {
     }
     
     pub fn evaluate(&self, game: &mut Board, ply: i32) -> i32 {
-        let cond = game.condition();
-        if cond == game.player {
-            return SearchParameters::Win - ply;
-        } else if cond == game.player.inverse() {
-            return -SearchParameters::Win + ply;
-        } else if cond == DRAW {
+        if game.is_draw() {
             return 0;
         }
         
         return Eval::evaluate(game);    
-        // let mut score = 0.0;
-        // let sign = if game.player == RED { 1 } else { -1 };
-        // 
-        // for row in 0..Board::ROWS {
-        //     let mut r = row;
-        //     if game.player == BLACK {
-        //         r = 9 - row;
-        //     }
-        // 
-        //     for col in 0..Board::COLS {
-        //         let cell = game.state[row][col];
-        //         if cell == Piece::SPACE {
-        //             continue;
-        //         }
-        // 
-        // 
-        //         if cell.signum() == sign {
-        //             score += Self::SCORES[cell.abs() as usize]
-        //                 * Self::MULTIPLIERS[cell.abs() as usize]
-        //                 [r][col];
-        //         } else {
-        //             score -= Self::SCORES[cell.abs() as usize]
-        //                 * Self::MULTIPLIERS[cell.abs() as usize]
-        //                 [9 - r][col];
-        //         }
-        //     }
-        // }
-        // 
-        // let move_advantage = 0.5;
-        // ((score + move_advantage) * 10.0) as i32
     }
 
     fn score_moves(&self, game: &mut Board, moves: &mut Vec<Move>, ply: i32, pv_move: &Move, prev_move: &Move) {
@@ -89,7 +54,8 @@ impl Engine {
             if mov.equals(pv_move) {
                 score += SearchParameters::MvvLvaOffset + SearchParameters::PVMoveScore;
             } else if capture != Piece::SPACE {
-                score += SearchParameters::MvvLvaOffset + 5*Self::SCORES[capture.abs() as usize] as i32;
+                let piece_score = game.score_piece(mov.endy as usize, mov.endx as usize);
+                score += SearchParameters::MvvLvaOffset + piece_score;
             } else if mov.equals(&self.killers[ply][0]) {
                 score += SearchParameters::MvvLvaOffset - SearchParameters::FirstKillerMoveScore;
             } else if mov.equals(&self.killers[ply][1]) {
@@ -263,7 +229,7 @@ impl Engine {
         }
 
         // fail-safe in case we fuck something up
-        if self.searches > self.maxpositions {
+        if self.searches >= self.maxpositions {
             return 0;
         }
 
@@ -382,7 +348,7 @@ impl Engine {
                 && !is_pv_node
                 && !in_check
                 && legal_moves > SearchParameters::LateMovePruningMargins[depth as usize] {
-                let tactical = game.is_check() || !mov.is_quiet();
+                let tactical = game.is_check();
                 if !tactical {
                     game.unmov(mov);
                     continue;
@@ -427,7 +393,7 @@ impl Engine {
                 score = -self.negamax(game, next_depth, ply + 1, -beta, -alpha, &mut child_pv_line, true, mov, &Move::null(), is_extended);
             } else {
                 // late move reduction
-                let tactical = in_check && mov.captured != 0;
+                let tactical = in_check && !mov.is_quiet();
                 let mut reduction = 0;
                 if !is_pv_node && legal_moves >= SearchParameters::LMRLegalMovesLimit
                     && depth >= SearchParameters::LMRDepthLimit && !tactical {
@@ -490,7 +456,7 @@ impl Engine {
 
         let mut best_move = Move::null();
         let mut alpha = -1e9 as i32;
-        let mut beta = -1e9 as i32;
+        let mut beta = 1e9 as i32;
         let mut score = 0;
 
         let mut level = 1;

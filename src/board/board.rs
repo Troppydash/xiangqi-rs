@@ -447,6 +447,32 @@ impl Board {
         }
         Condition::NONE
     }
+    
+    pub fn is_draw(&self) -> bool {
+        // 30 move rule
+        if self.ply - self.last_capture >= 60 {
+            return true;
+        }
+
+        // 3 fold rep
+        if self.exceeded {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    pub fn score_piece(&self, row: usize, col: usize) -> i32 {
+        let piece = self.state[row][col];
+        assert!(piece != Piece::SPACE);
+        
+        let mut coord = (row, col);
+        if self.player == BLACK {
+            coord = Move::flip_coord(&coord);
+        }
+        
+        return self.mg_table[(piece.abs() - 1) as usize][coord.0][coord.1];
+    }
 
     /// make a move, where the move is unverified
     pub fn try_move(&mut self, mut mov: &mut Move) -> bool {

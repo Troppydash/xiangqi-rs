@@ -17,7 +17,7 @@ mod server;
 fn test_pos1() {
     let moves = "B3E3,H8H4,H3HX,IXHX,H1G3,HXH5,A1A3,B8E8,I1I3,BXC8,B1C3,AXBX,G4G5,H5G5,I3H3,H4C4,G1I3,C4C1,D1E2,G5G4,E2F3,BXB2,H3HX,B2C2,C3D5";
     let mut board = Board::new();
-    let (mg_pst, eg_pst) = Eval::load_pst("./data/boards.txt");
+    let (mg_pst, eg_pst) = Eval::load_pst("./required/pst.txt");
     board.load_pst(mg_pst, eg_pst);
     let moves: Vec<&str> = moves.split(",").collect::<Vec<&str>>();
     let moves = moves.iter().map(|st| Move::from_string(&st.to_string())).collect::<Option<Vec<Move>>>();
@@ -29,7 +29,7 @@ fn test_pos1() {
 
     println!("{}", board.display());
     let mut engine = Engine::new();
-    engine.search(&mut board, 16, 1000000);
+    engine.search(&mut board, 16, 2000000);
 }
 
 fn test_pos2() {
@@ -122,8 +122,8 @@ fn main() {
     // }
     // 
 
-    start_ws();
-    // test_pos1();
+    // start_ws();
+    test_pos1();
     // test_basic();
     // test_pos3();
     // test_pos4();
