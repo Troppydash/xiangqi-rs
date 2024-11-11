@@ -4,7 +4,7 @@ use crate::engine::parameters::SearchParameters;
 pub struct TTEntry {
     pub hash: u64,
     depth: i32,
-    score: f32,
+    score: i32,
     best: Option<Move>,
     pub flag: i8,
 }
@@ -14,14 +14,14 @@ impl TTEntry {
         Self {
             depth: 0,
             hash: 0,
-            score: 0.0,
+            score: 0,
             best: None,
             flag: 0,
         }
     }
 
-    pub fn get(&self, hash: u64, ply: i32, depth: i32, alpha: f32, beta: f32) -> (Option<Move>, f32, bool) {
-        let mut adjusted = 0.0;
+    pub fn get(&self, hash: u64, ply: i32, depth: i32, alpha: i32, beta: i32) -> (Option<Move>, i32, bool) {
+        let mut adjusted = 0;
         let mut should_use = false;
         let mut best = &None;
 
@@ -32,11 +32,11 @@ impl TTEntry {
             if self.depth >= depth {
                 let mut score = self.score;
                 if score > SearchParameters::Checkmate {
-                    score -= ply as f32;
+                    score -= ply;
                 }
 
                 if score < -SearchParameters::Checkmate {
-                    score += ply as f32;
+                    score += ply;
                 }
 
                 if self.flag == SearchParameters::ExactFlag {
@@ -59,18 +59,18 @@ impl TTEntry {
         (best.clone(), adjusted, should_use)
     }
 
-    pub fn set(&mut self, hash: u64, mut score: f32, best: &Move, ply: i32, depth: i32, flag: i8) {
+    pub fn set(&mut self, hash: u64, mut score: i32, best: &Move, ply: i32, depth: i32, flag: i8) {
         self.hash = hash;
         self.depth = depth;
         self.best = Some(best.clone());
         self.flag = flag;
 
         if score > SearchParameters::Checkmate {
-            score += ply as f32;
+            score += ply;
         }
 
         if score < -SearchParameters::Checkmate {
-            score -= ply as f32;
+            score -= ply;
         }
 
         self.score = score;

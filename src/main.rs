@@ -1,7 +1,11 @@
+use rand::Rng;
 use crate::board::board::Board;
 use crate::board::movee::Move;
 use crate::board::piece::Piece;
+use crate::engine::eval::Eval;
 use crate::engine::search::Engine;
+use crate::engine::training;
+use crate::engine::training::save_db;
 use crate::server::socket;
 use crate::server::socket::serve;
 
@@ -13,6 +17,8 @@ mod server;
 fn test_pos1() {
     let moves = "B3E3,H8H4,H3HX,IXHX,H1G3,HXH5,A1A3,B8E8,I1I3,BXC8,B1C3,AXBX,G4G5,H5G5,I3H3,H4C4,G1I3,C4C1,D1E2,G5G4,E2F3,BXB2,H3HX,B2C2,C3D5";
     let mut board = Board::new();
+    let (mg_pst, eg_pst) = Eval::load_pst("./data/boards.txt");
+    board.load_pst(mg_pst, eg_pst);
     let moves: Vec<&str> = moves.split(",").collect::<Vec<&str>>();
     let moves = moves.iter().map(|st| Move::from_string(&st.to_string())).collect::<Option<Vec<Move>>>();
     let mut moves = moves.unwrap();
@@ -96,8 +102,26 @@ fn show(msg: &Vec<i32>) {
 }
 
 fn main() {
-    // let num: u32 = 12;
+    // let db = training::create_db("/media/terry/Games/projects/2024/mlprojects/xiangqi-rs/data/output2");
+    // save_db("/media/terry/Games/projects/2024/mlprojects/xiangqi-rs/data/parsed.txt", &db);
+    // let mut rng = rand::thread_rng();
+    // println!("{}", rng.random::<f64>());
+    // let db = training::read_db("/media/terry/Games/projects/2024/mlprojects/xiangqi-rs/data/parsed.txt");
+    // training::tune_pst(&db);
+    // 
     
+    // let num: u32 = 12;
+    // let mut board = Board::new();
+    // let moves = "C2=5,n8+7,N2+3,p7+1,P7+1,n2+3,N8+7,n7+8,R1+1,b3+5,R1=4,a4+5,C8=9,p9+1,R9=8,c2=1,N7+6,r1=4,R4+3,r9+3,C5=6,r4=1,N6+7,p5+1,C9=7,r9=4,N7-6,p7+1,R4=3,r4=6,P7+1,r1=2,R8+9,n3-2,B3+5,c1+4,P7=6,n8+6,R3=2,c8=7,P6=5,c1-1,R2-3,r6=2,P3+1,c7+5,C6=3,r2=4,N6+8,r4+3,R2=9,p1+1,-P+1,n2+4,R9+2,r4=1,N8-9,n4+3,C3=4,c1=2,N9+8,c2+4,N8-7,n3+4,A4+5,n6+5,N7-5,n4+5,+P=4,n5-4,C7+2,n4+3,C4=1,c2-4,C7-1,c2=7,C1+3,p1+1,B7+5,c7+1,A5+6,p1=2,-A+5,p2+1,C7=5,n3-4,C1+4,p2=3,B5+7,n4-3,P5+1,p3=4,C5+1";
+    // let moves = moves.split(",").collect::<Vec<&str>>();
+    // for mov in moves {
+    //     println!("{}", mov);
+    //     let mut actual = board.parse_move(mov.to_string()).expect("Invalid move");
+    //     board.mov(&mut actual);
+    //     println!("Move {}\n{}", actual.display(), board.display());
+    // }
+    // 
+
     start_ws();
     // test_pos1();
     // test_basic();

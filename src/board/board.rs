@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use fnv::FnvHashMap;
 use rand::Rng;
 use crate::board::condition::Condition;
-use crate::board::condition::Condition::{NONE, RED};
+use crate::board::condition::Condition::{BLACK, NONE, RED};
 use crate::board::movee::Move;
 use crate::board::piece::Piece;
+use crate::engine::eval::Eval;
 
 #[derive(Clone)]
 pub struct Board {
@@ -13,6 +14,15 @@ pub struct Board {
     pub state: Vec<Vec<i8>>,
     /// Current player
     pub player: Condition,
+
+    // piece space tables, from red's perspective
+    // [piece][row][col]
+    mg_table: Vec<Vec<Vec<i32>>>,
+    eg_table: Vec<Vec<Vec<i32>>>,
+
+    // cached scores, red and black
+    pub mg_score: [i32; 2],
+    pub eg_score: [i32; 2],
 
     // caches
     horizontal: Vec<(i8, i8)>,
@@ -32,7 +42,7 @@ pub struct Board {
     ply: i32,
     last_capture: i32,  // last capture ply
     history: FnvHashMap<u64, i32>,
-    exceeded: bool  // is a draw
+    exceeded: bool,  // is a draw
 }
 
 impl Board {
@@ -91,9 +101,16 @@ impl Board {
             rngs.push(v1);
         }
 
+        let (mg, eg) = Eval::create_pst();
+        
+        
         let mut item = Self {
             state: board,
             player: Condition::RED,
+            eg_table: mg,
+            mg_table: eg,
+            mg_score: [0, 0],
+            eg_score: [0, 0],
             horizontal,
             horse,
             diagonal,
@@ -105,12 +122,18 @@ impl Board {
             history: FnvHashMap::default(),
             cache_moves: vec![],
             cache_ok: false,
-            exceeded: false
+            exceeded: false,
         };
         item.get_hash();
         item
     }
 
+    
+    pub fn load_pst(&mut self, mg: Vec<Vec<Vec<i32>>>, eg: Vec<Vec<Vec<i32>>>) {
+        self.mg_table = mg;
+        self.eg_table = eg;
+    }
+    
     /// Gets the hash for the specific cell
     fn get_hash_cell(&self, row: i8, col: i8) -> u64 {
         let row = row as usize;
@@ -213,7 +236,7 @@ impl Board {
 
         updated_buffer
     }
-    
+
     /// Flips player turn
     fn next_turn(&mut self) {
         self.cache_ok = false;
@@ -230,7 +253,7 @@ impl Board {
 
         result
     }
-    
+
     /// Checks if the current king is in check
     pub fn is_check(&mut self) -> bool {
         let sign = if self.player == Condition::RED { 1 } else { -1 };
@@ -267,6 +290,7 @@ impl Board {
         return false;
     }
 
+    
     /// Performs the move
     pub fn mov(&mut self, mov: &mut Move) {
         // check if capturing general
@@ -287,14 +311,46 @@ impl Board {
             return;
         }
 
+        // remove hashes
         self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
         self.hh ^= self.get_hash_cell(mov.starty, mov.startx);
 
+        // handle last capture draws
         mov.last_capture = self.last_capture;
         if self.state[mov.endy as usize][mov.endx as usize] != Piece::SPACE {
             self.last_capture = self.ply;
         }
 
+        // update pst scores
+        let piece = self.state[mov.starty as usize][mov.startx as usize].abs();
+        assert_ne!(piece, Piece::SPACE, "cannot move an empty space");
+        
+        // subtract prev
+        let mut start = (mov.starty as usize, mov.startx as usize);
+        if self.player == BLACK {
+            start = Move::flip_coord(&start);
+        }
+        let mut end = (mov.endy as usize, mov.endx as usize);
+        if self.player == BLACK {
+            end = Move::flip_coord(&end);
+        }
+        
+        self.mg_score[self.player as usize] -= self.mg_table[piece as usize - 1][start.0][start.1];
+        self.eg_score[self.player as usize] -= self.eg_table[piece as usize - 1][start.0][start.1];
+        // add new scores
+        self.mg_score[self.player as usize] += self.mg_table[piece as usize - 1][end.0][end.1];
+        self.eg_score[self.player as usize] += self.eg_table[piece as usize - 1][end.0][end.1];
+
+        // if captures, remove other
+        let otherpiece = self.state[mov.endy as usize][mov.endx as usize].abs();
+        if otherpiece != Piece::SPACE {
+            let other = self.player.inverse() as usize;
+            let otherend = Move::flip_coord(&end);
+            self.mg_score[other] -= self.mg_table[otherpiece as usize - 1][otherend.0][otherend.1];
+            self.eg_score[other] -= self.eg_table[otherpiece as usize - 1][otherend.0][otherend.1];
+        }
+
+        // perform move
         let ch = self.state[mov.starty as usize][mov.startx as usize];
         self.state[mov.starty as usize][mov.startx as usize] = Piece::SPACE;
         self.state[mov.endy as usize][mov.endx as usize] = ch;
@@ -307,7 +363,8 @@ impl Board {
 
         // push history
         let hh = self.hh;
-        self.history.insert(hh, self.history.get(&hh).unwrap_or(&0)+1);
+        self.history.insert(hh, self.history.get(&hh).unwrap_or(&0) + 1);
+        // for some reason
         if *self.history.get(&hh).unwrap() >= 3 {
             self.exceeded = true;
         }
@@ -324,18 +381,44 @@ impl Board {
 
         // pop history
         let hh = self.hh;
-        self.history.insert(hh, self.history.get(&hh).unwrap_or(&0)-1);
+        self.history.insert(hh, self.history.get(&hh).unwrap_or(&0) - 1);
         self.exceeded = false;
         if *self.history.get(&hh).unwrap() == 0 {
             self.history.remove(&hh);
         }
 
+        // remove hash at new position
         self.hh ^= self.get_hash_cell(mov.endy, mov.endx);
 
+        // handle last capture draw
         if mov.captured != Piece::SPACE {
             self.last_capture = mov.last_capture;
         }
+        
+        // remove end square score and readd back
+        let piece = self.state[mov.endy as usize][mov.endx as usize].abs();
+        let player = self.player.inverse();
+        let mut start = (mov.starty as usize, mov.startx as usize);
+        if player == BLACK {
+            start = Move::flip_coord(&start);
+        }
+        let mut end = (mov.endy as usize, mov.endx as usize);
+        if player == BLACK {
+            end = Move::flip_coord(&end);
+        }
+        self.mg_score[player as usize] -= self.mg_table[piece as usize - 1][end.0][end.1];
+        self.eg_score[player as usize] -= self.eg_table[piece as usize - 1][end.0][end.1];
+        self.mg_score[player as usize] += self.mg_table[piece as usize - 1][start.0][start.1];
+        self.eg_score[player as usize] += self.eg_table[piece as usize - 1][start.0][start.1];
+        
+        if mov.captured != Piece::SPACE {
+            let otherpiece = mov.captured.abs();
+            let otherend = Move::flip_coord(&end);
+            self.mg_score[self.player as usize] += self.mg_table[otherpiece as usize - 1][otherend.0][otherend.1];
+            self.eg_score[self.player as usize] += self.eg_table[otherpiece as usize - 1][otherend.0][otherend.1];
+        }
 
+        // perform reverse
         self.state[mov.starty as usize][mov.startx as usize] = self.state[mov.endy as usize][mov.endx as usize];
         self.state[mov.endy as usize][mov.endx as usize] = mov.captured;
 
@@ -373,6 +456,10 @@ impl Board {
 
         // load information
         mov.captured = self.state[mov.endy as usize][mov.endx as usize];
+        
+        if mov.captured.abs() == Piece::GENERAL {
+            return false;
+        }
 
         // try move
         self.mov(&mut mov);
@@ -430,9 +517,202 @@ impl Board {
 
         out.join("\n")
     }
-    
-    
-    
+
+
+    pub fn parse_move(&self, text: String) -> Option<Move> {
+        /// Ok here's the format
+        /// {+-[1-5]}{KRHCPAE}{[1-9]}{+-=}{[1-9]}
+        /// tandem, piece, file, towards, amount
+        ///
+        /// All direction is against the current player
+        /// Tandem is + if front, - if back, 1-5 for pawns with 1 at the front
+        /// Piece is piece name
+        /// File is initial file with 1 at RIGHT and 9 at LEFT (none if +-)
+        /// Towards is + if forward, - if backwards, = if sideways
+        /// Amount is number of steps if +-, or file if =
+
+        /// minimal error checking here
+
+        if !(text.len() >= 4 && text.len() <= 5) {
+            // println!( "incorrect move length, got {} and {}, \n{}", text.len(), text, self.display());
+            return None;
+        }
+        
+
+        let chars: Vec<char> = text.chars().collect();
+
+        // the index in file for the piece
+        let mut index = 0;
+        // the offset in text indexing
+        let mut offset = 0;
+        let mult: i8 = if self.player == RED { 1 } else { -1 };
+
+        //// Handle move from ////
+        let mut start = (0, 0);
+        let mut special = false;
+
+        // handle tandem
+        let piece;
+        let tandem = chars[0];
+        if tandem.is_digit(10) {
+            // handle pawn tandem
+            piece = Piece::SOLDIER;
+            offset = 0;
+            index = (chars[0] as usize - '0' as usize) - 1;
+        } else if tandem == '+' {
+            // forward tandem
+            piece = Piece::from_char(chars[1])?;
+            index = 0;
+            offset = 1;
+        } else if tandem == '-' {
+            // backwards tandem
+            piece = Piece::from_char(chars[1])?;
+            index = 1;
+            offset = 1;
+        } else {
+            // normal
+            piece = Piece::from_char(chars[0])?;
+            index = 0;
+            offset = 0;
+        }
+
+        if tandem.is_digit(10) || tandem == '+' || tandem == '-' {
+            // special case
+            if chars.len() == 4 {
+                offset = 0;
+                special = true;
+                // locate piece
+                let mut failed = true;
+                let mut order: Vec<usize> = (0..Self::ROWS).collect();
+                if self.player == Condition::BLACK {
+                    order.reverse();
+                }
+                for col in 0..9 {
+                    if !failed {
+                        break;
+                    }
+                    
+                    // note that we need the column to actually have that many
+                    let mut count = 0;
+                    for row in order.iter() {
+                        if self.state[*row][col] == mult * piece {
+                            count += 1;
+                        }
+                    }
+                    
+                    if count < 2 {
+                        continue;
+                    }
+                    
+                    for row in order.iter() {
+                        if self.state[*row][col] == mult * piece {
+                            if index == 0 {
+                                failed = false;
+                                start = (*row, col);
+                                break;
+                            } else {
+                                index -= 1;
+                            }
+                        }
+                    }
+                }
+                assert!(!failed, "failed to find piece to move special +");
+            }
+        }
+
+        if !special {
+            // get piece column
+            let file = chars[offset + 1] as usize - '0' as usize;
+            // 1 -> 8, 2 -> 7
+            let mut col = 9 - file;
+            if self.player == BLACK {
+                col = 8 - col;
+            }
+
+            // locate piece
+            let mut failed = true;
+            let mut order: Vec<usize> = (0..Self::ROWS).collect();
+            if self.player == Condition::BLACK {
+                order.reverse();
+            }
+            for row in order {
+                if self.state[row][col] == mult * piece {
+                    if index == 0 {
+                        failed = false;
+                        start = (row, col);
+                        break;
+                    } else {
+                        index -= 1;
+                    }
+                }
+            }
+            
+            if failed {
+                println!("failed to find piece to move");
+                return None;
+            }
+        }
+
+
+        //// Handle move to ////
+
+        // get other stats
+        let towards = chars[offset + 2];
+        let amount = chars[offset + 3] as usize - '0' as usize;
+
+        let mut col = 9 - amount;
+        if self.player == BLACK {
+            col = 8 - col;
+        }
+
+        if towards == '=' {
+            // horizontal moves are exact
+            let to = (start.0, col);
+            return Some(Move::from_coords(start, to));
+        } else if towards == '+' {
+            let row = (start.0 as i8 - mult * amount as i8) as usize;
+
+            // horizontal can derive row
+            if Piece::is_horizontal(piece) {
+                let to = (row, start.1);
+                return Some(Move::from_coords(start, to));
+            }
+
+            // need to find where this piece moved to
+            for mov in self.get_all_moves() {
+                if mov.startx == start.1 as i8 && mov.starty == start.0 as i8 {
+                    if mov.endx == col as i8 && (mov.endy - start.0 as i8).signum() == -mult {
+                        // this is the move
+                        return Some(mov);
+                    }
+                }
+            }
+            println!("cannot find the move destination {}", text);
+            return None;
+        } else if towards == '-' {
+            let row = (start.0 as i8 + mult * amount as i8) as usize;
+
+            // horizontal can derive row
+            if Piece::is_horizontal(piece) {
+                let to = (row, start.1);
+                return Some(Move::from_coords(start, to));
+            }
+
+            // need to find where this piece moved to
+            for mov in self.get_all_moves() {
+                if mov.startx == start.1 as i8 && mov.starty == start.0 as i8 {
+                    if mov.endx == col as i8 && (mov.endy - start.0 as i8).signum() == mult {
+                        // this is the move
+                        return Some(mov);
+                    }
+                }
+            }
+            println!("cannot find the move destination {}\n{}", text, self.display());
+            return None;
+        }
+
+        panic!("why did i reach here?");
+    }
 }
 
 /// MOVES ///
@@ -474,7 +754,7 @@ impl Board {
     }
 
     /// Returns all possible (maybe invalid for checks) moves
-    fn get_all_moves(&mut self) -> Vec<Move> {
+    fn get_all_moves(&self) -> Vec<Move> {
         let mut mov_buffer = vec![];
 
         let sign = if self.player == RED { 1 } else { -1 };

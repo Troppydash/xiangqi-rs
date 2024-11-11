@@ -16,6 +16,10 @@ impl Move {
     pub fn new(starty: i8, startx: i8, endy: i8, endx: i8) -> Self {
         Self { startx, starty, endx, endy, captured: 0, last_capture: 0 }
     }
+    
+    pub fn from_coords(start: (usize, usize), to: (usize, usize)) -> Self {
+        Move::new(start.0 as i8, start.1 as i8, to.0 as i8, to.1 as i8)
+    }
 
     pub fn null() -> Self {
         Self {
@@ -28,7 +32,7 @@ impl Move {
         }
     }
 
-    pub fn from_string(text: &String) -> Option<Move> {
+    pub fn from_string(text: &str) -> Option<Move> {
         let cols: Vec<char> = "ABCDEFGHIJK".chars().collect();
         let rows: Vec<char> = "X987654321".chars().collect();
 
@@ -68,6 +72,9 @@ impl Move {
         format!("{}{}{}{}", cols[self.startx as usize], rows[self.starty as usize], cols[self.endx as usize], rows[self.endy as usize])
     }
 
+    pub fn flip_coord(coord: &(usize, usize)) -> (usize, usize) {
+        (9 - coord.0, 8 - coord.1)
+    }
 
     pub fn equals(&self, other: &Move) -> bool {
         self.compute_hash() == other.compute_hash()

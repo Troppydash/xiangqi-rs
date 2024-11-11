@@ -7,6 +7,7 @@ use futures::executor::ThreadPool;
 use futures::task::SpawnExt;
 use crate::board::board::Board;
 use crate::board::movee::Move;
+use crate::engine::eval::Eval;
 use crate::engine::search::Engine;
 
 #[derive(Serialize, Deserialize)]
@@ -26,12 +27,12 @@ struct Response {
     
     // analyze
     best_move: String,
-    score: f32
+    score: i32
 }
 
 fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
     // parse moves
-    let moves = instruct.moves.iter().map(Move::from_string).collect::<Option<Vec<Move>>>();
+    let moves = instruct.moves.iter().map(|s| Move::from_string(&s)).collect::<Option<Vec<Move>>>();
     if let None = moves {
         websocket.send("failed to parse move list".into()).unwrap();
         return;
@@ -40,6 +41,9 @@ fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
     // execute moves
     let mut moves = moves.unwrap();
     let mut board = Board::new();
+    let (mg_pst, eg_pst) = Eval::load_pst("./required/pst.txt");
+    board.load_pst(mg_pst, eg_pst);
+    
     for mov in moves.iter_mut() {
         if !board.try_move(mov) {
             websocket.send("failed to execute move list".into()).unwrap();
