@@ -1,6 +1,7 @@
 use std::fmt::format;
 use std::fs;
 use crate::board::board::Board;
+use crate::board::condition::Condition::{BLACK, RED};
 use crate::board::piece::Piece;
 
 pub struct Eval {
@@ -43,41 +44,40 @@ impl Eval {
                 }
                 
                 let mut piece = board.state[row][col];
-                let mut sign = 1;
-                if piece < 0 {
-                    sign = -1;
-                    piece = -piece;
+                let mut sign = if piece > 0 && board.player == RED || piece < 0 && board.player == BLACK { 1 } else {-1};
+                if sign != 1 {
                     board.player = board.player.inverse();
                 }                
                 
                 let row = row as i8;
                 let col = col as i8;
+                let piece = piece.abs();
                 let mut moves = vec![];
                 match piece {
                     Piece::SOLDIER => {
                         board.soldier_moves(row, col, &mut moves);
-                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * moves.len() as i32;
-                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * moves.len() as i32;
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len()) as i32;
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len()) as i32;
                     },
                     Piece::CANNON => {
                         board.cannon_moves(row, col, &mut moves, 0, 0);
-                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len() - 7) as i32;
-                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len() - 7) as i32;
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len()  as i32 -7);
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len()  as i32 -7);
                     },
                     Piece::CHARIOT => {
                         board.chariot_moves(row, col, &mut moves, 0, 0);
-                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len()-7) as i32;
-                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len()-7) as i32;
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len()  as i32-7);
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len()  as i32 -7);
                     },
                     Piece::HORSE => {
                         board.horse_moves(row, col, &mut moves, 0,0 );
-                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len()-2) as i32;
-                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len()-2) as i32;
+                        mg_eval += sign*self.mobility_mg[(piece-1) as usize] * (moves.len() as i32-2);
+                        eg_eval += sign*self.mobility_eg[(piece-1) as usize] * (moves.len() as i32-2);
                     },
                     _ => {}
                 }
                 
-                if sign == -1 {
+                if sign != 1 {
                     board.player = board.player.inverse();
                 }
             }

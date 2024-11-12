@@ -41,7 +41,7 @@ fn analyze_board(websocket: &mut WebSocket<TcpStream>, instruct: &Instruct) {
     // execute moves
     let mut moves = moves.unwrap();
     let mut board = Board::new();
-    let (mg_pst, eg_pst) = Eval::load_pst("./required/pst.txt");
+    let (mg_pst, eg_pst) = Eval::load_pst("./required/pst2.txt");
     board.load_pst(mg_pst, eg_pst);
     
     for mov in moves.iter_mut() {

@@ -12,7 +12,7 @@ impl Condition {
         match self {
             Condition::RED => Condition::BLACK,
             Condition::BLACK => Condition::RED,
-            _ => Condition::NONE
+            _ => panic!("cannot inverse non red black")
         }
     }
 

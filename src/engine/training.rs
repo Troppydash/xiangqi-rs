@@ -1,3 +1,5 @@
+use std::cmp::max;
+use std::fmt::format;
 use std::fs;
 use rand::Rng;
 use crate::board::board::Board;
@@ -146,8 +148,7 @@ pub fn save_db(file: &str, db: &Vec<Game>) {
 }
 
 pub fn find_k(db: &Vec<Game>) {
-    let mut engine = Engine::new();
-
+    let mut eval = Eval::new();
     println!("Counting positions...");
     let mut total = 0;
     for game in db.iter() {
@@ -185,7 +186,7 @@ pub fn find_k(db: &Vec<Game>) {
 
                 // compute qi
                 // let qi = engine.qsearch(&mut board, -1e9 as i32, 1e9 as i32, &mut vec![], 0, 0) as f32;
-                let mut qi = engine.evaluate(&mut board, 0) as f64;
+                let mut qi = eval.evaluate(&mut board) as f64;
                 // qi is from the current player's perspective, we want the red's perspective
                 if board.player == BLACK {
                     qi = -qi;
@@ -210,7 +211,7 @@ pub fn find_k(db: &Vec<Game>) {
 }
 
 pub fn tune_pst(db: &Vec<Game>) {
-    let mut engine = Engine::new();
+    let mut eval = Eval::new();
     let k = 4.314075670609904;
     println!("Counting positions...");
     let mut total = 0;
@@ -227,8 +228,13 @@ pub fn tune_pst(db: &Vec<Game>) {
     println!("Found {} positions", total);
 
     let mut rng = rand::thread_rng();
-    let (mut mg_pst, mut eg_pst) = Eval::create_pst();
-    let mut best_state = (mg_pst.clone(), eg_pst.clone());
+    let (mut mg_pst, mut eg_pst) = Eval::load_pst("./required/pst2.txt");
+    
+    let mut mobility_mg = [0,0,0,0,0,2,3];
+    let mut mobility_eg = [0,3,2,0,0,4,6];
+    let mut tempo = 5;
+    
+    let mut best_state = (mg_pst.clone(), eg_pst.clone(), mobility_mg.clone(), mobility_eg.clone(), tempo);
     let mut best_score = 1e9;
 
     let mut mg_rng_piece = rng.gen_range(0..7);
@@ -240,18 +246,22 @@ pub fn tune_pst(db: &Vec<Game>) {
     let mut eg_rng_row = rng.gen_range(0..10);
     let mut eg_rng_col = rng.gen_range(0..9);
     let mut eg_rng_dir = 0;
-
+    
     loop {
+        eval.mobility_eg = mobility_eg.clone();
+        eval.mobility_mg = mobility_mg.clone();
+        eval.tempo_score = tempo;
+        
         println!("Best {}\nMG\n{}EG\n{}", best_score, Eval::display_pst(&best_state.0), Eval::display_pst(&best_state.1));
         // score = 1/n sum (score_i - sigmoid(qi))^2
         let mut score = 0.0;
         let mut counts = 0;
-        for game in db.iter().take(90000 / 5) {
+        for game in db.iter().take(90000 / 2) {
             let mut board = Board::new();
             board.load_pst(mg_pst.clone(), eg_pst.clone());
 
             for mov in game.moves.iter() {
-                if counts % 10000 == 0 {
+                if counts % 100000 == 0 {
                     print!("\rCount {} / {}", counts, total);
                 }
 
@@ -261,7 +271,7 @@ pub fn tune_pst(db: &Vec<Game>) {
                 }
 
                 // compute qi
-                let mut qi = engine.evaluate(&mut board, 0) as f64;
+                let mut qi = eval.evaluate(&mut board) as f64;
                 // qi is from the current player's perspective, we want the red's perspective
                 if board.player == BLACK {
                     qi = -qi;
@@ -274,9 +284,13 @@ pub fn tune_pst(db: &Vec<Game>) {
         println!("\nscore {}", score);
         if score < best_score {
             best_score = score;
-            best_state = (mg_pst.clone(), eg_pst.clone());
+            best_state = (mg_pst.clone(), eg_pst.clone(), mobility_mg.clone(), mobility_eg.clone(), tempo);
             
-            let text = format!("{}\n{}", Eval::display_pst(&best_state.0), Eval::display_pst(&best_state.1));
+            let mobmg = mobility_mg.map(|v| format!("{}", v)).join(",");
+            let mobeg = mobility_eg.map(|v| format!("{}", v)).join(",");
+            let tmp = format!("{}", tempo);
+            
+            let text = format!("{}\n{}\n{}\n{}\n{}", Eval::display_pst(&best_state.0), Eval::display_pst(&best_state.1), mobmg, mobeg, tmp);
             fs::write("/media/terry/Games/projects/2024/mlprojects/xiangqi-rs/data/boards.txt", text).unwrap();
         } else {
             mg_pst[mg_rng_piece][mg_rng_row][mg_rng_col] -= mg_rng_dir;
@@ -287,69 +301,88 @@ pub fn tune_pst(db: &Vec<Game>) {
             if eg_rng_col != 4 {
                 eg_pst[eg_rng_piece][eg_rng_row][8 - eg_rng_col] -= eg_rng_dir;
             }
+            
+            mobility_mg = best_state.2.clone();
+            mobility_eg = best_state.3.clone();
+            tempo = best_state.4;
         }
 
         // change pst
-        mg_rng_piece = rng.gen_range(0..7);
-        loop {
-            mg_rng_row = rng.gen_range(0..10);
-            mg_rng_col = rng.gen_range(0..9);
-            mg_rng_dir = if rng.gen_range(0..2) == 0 { -1 } else { 1 };
-
-            if mg_rng_piece as i8 == Piece::GENERAL - 1 || mg_rng_piece as i8 == Piece::ADVISOR - 1 {
-                if !(7 <= mg_rng_row && mg_rng_row <= 9 && 3 <= mg_rng_col && mg_rng_col <= 5) {
-                    continue;
-                }
-            }
-            if mg_rng_piece as i8 == Piece::ELEPHANT - 1 {
-                if !(5 <= mg_rng_row && mg_rng_row <= 9) {
-                    continue;
-                }
-            }
-
-            if mg_rng_piece as i8 == Piece::SOLDIER - 1 {
-                if mg_rng_row >= 7 {
-                    continue;
-                }
-            }
-
-            break;
+        // mg_rng_piece = rng.gen_range(0..7);
+        // loop {
+        //     mg_rng_row = rng.gen_range(0..10);
+        //     mg_rng_col = rng.gen_range(0..9);
+        //     mg_rng_dir = if rng.gen_range(0..2) == 0 { -1 } else { 1 };
+        // 
+        //     if mg_rng_piece as i8 == Piece::GENERAL - 1 || mg_rng_piece as i8 == Piece::ADVISOR - 1 {
+        //         if !(7 <= mg_rng_row && mg_rng_row <= 9 && 3 <= mg_rng_col && mg_rng_col <= 5) {
+        //             continue;
+        //         }
+        //     }
+        //     if mg_rng_piece as i8 == Piece::ELEPHANT - 1 {
+        //         if !(5 <= mg_rng_row && mg_rng_row <= 9) {
+        //             continue;
+        //         }
+        //     }
+        // 
+        //     if mg_rng_piece as i8 == Piece::SOLDIER - 1 {
+        //         if mg_rng_row >= 7 {
+        //             continue;
+        //         }
+        //     }
+        // 
+        //     break;
+        // }
+        // 
+        // mg_pst[mg_rng_piece][mg_rng_row][mg_rng_col] += mg_rng_dir;
+        // if mg_rng_col != 4 {
+        //     mg_pst[mg_rng_piece][mg_rng_row][8 - mg_rng_col] += mg_rng_dir;
+        // }
+        // 
+        // 
+        // eg_rng_piece = rng.gen_range(0..7);
+        // loop {
+        //     eg_rng_row = rng.gen_range(0..10);
+        //     eg_rng_col = rng.gen_range(0..9);
+        //     eg_rng_dir = if rng.gen_range(0..2) == 0 { -1 } else { 1 };
+        // 
+        //     if eg_rng_piece as i8 == Piece::GENERAL - 1 || eg_rng_piece as i8 == Piece::ADVISOR - 1{
+        //         if !(7 <= eg_rng_row && eg_rng_row <= 9 && 3 <= eg_rng_col && eg_rng_col <= 5) {
+        //             continue;
+        //         }
+        //     }
+        //     if eg_rng_piece as i8 == Piece::ELEPHANT - 1 {
+        //         if !(5 <= eg_rng_row && eg_rng_row <= 9) {
+        //             continue;
+        //         }
+        //     }
+        // 
+        //     if eg_rng_piece as i8 == Piece::SOLDIER - 1 {
+        //         if eg_rng_row >= 7 {
+        //             continue;
+        //         }
+        //     }
+        // 
+        //     break;
+        // }
+        // eg_pst[eg_rng_piece][eg_rng_row][eg_rng_col] += eg_rng_dir;
+        // if eg_rng_col != 4 {
+        //     eg_pst[eg_rng_piece][eg_rng_row][8 - eg_rng_col] += eg_rng_dir;
+        // }
+        
+        // change tempo
+        if rng.random::<f32>() < 1.0 {
+            tempo += if rng.gen_range(0..2) == 0 { -1 } else { 1 };
+            tempo = max(0, tempo);
         }
-
-        mg_pst[mg_rng_piece][mg_rng_row][mg_rng_col] += mg_rng_dir;
-        if mg_rng_col != 4 {
-            mg_pst[mg_rng_piece][mg_rng_row][8 - mg_rng_col] += mg_rng_dir;
-        }
-
-
-        eg_rng_piece = rng.gen_range(0..7);
-        loop {
-            eg_rng_row = rng.gen_range(0..10);
-            eg_rng_col = rng.gen_range(0..9);
-            eg_rng_dir = if rng.gen_range(0..2) == 0 { -1 } else { 1 };
-
-            if eg_rng_piece as i8 == Piece::GENERAL - 1 || eg_rng_piece as i8 == Piece::ADVISOR - 1{
-                if !(7 <= eg_rng_row && eg_rng_row <= 9 && 3 <= eg_rng_col && eg_rng_col <= 5) {
-                    continue;
-                }
-            }
-            if eg_rng_piece as i8 == Piece::ELEPHANT - 1 {
-                if !(5 <= eg_rng_row && eg_rng_row <= 9) {
-                    continue;
-                }
-            }
-
-            if eg_rng_piece as i8 == Piece::SOLDIER - 1 {
-                if eg_rng_row >= 7 {
-                    continue;
-                }
-            }
-
-            break;
-        }
-        eg_pst[eg_rng_piece][eg_rng_row][eg_rng_col] += eg_rng_dir;
-        if eg_rng_col != 4 {
-            eg_pst[eg_rng_piece][eg_rng_row][8 - eg_rng_col] += eg_rng_dir;
+        
+        // change mob score
+        if rng.random::<f32>() < 1.0 {
+            let options = [1,2,5,6];
+            let piece = options[rng.gen_range(0..4)];
+            mobility_mg[piece] = max(0, mobility_mg[piece] + if rng.gen_range(0..2) == 0 { -1 } else { 1 });
+            let piece = options[rng.gen_range(0..4)];
+            mobility_eg[piece] = max(0, mobility_eg[piece] + if rng.gen_range(0..2) == 0 { -1 } else { 1 });
         }
     }
 }

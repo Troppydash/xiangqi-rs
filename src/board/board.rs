@@ -21,7 +21,7 @@ pub struct Board {
     eg_table: Vec<Vec<Vec<i32>>>,
 
     // cached general position
-    general: [i8; 4],
+    pub general: [i8; 4],
 
     // cached scores, red and black
     pub mg_score: [i32; 2],
@@ -46,6 +46,9 @@ pub struct Board {
     last_capture: i32,  // last capture ply
     history: FnvHashMap<u64, i32>,
     exceeded: bool,  // is a draw
+    
+    
+    temp: bool,
 }
 
 impl Board {
@@ -108,6 +111,7 @@ impl Board {
         
         
         let mut item = Self {
+            temp: false,
             state: board,
             player: Condition::RED,
             general: [9, 4, 0, 4],
@@ -178,12 +182,14 @@ impl Board {
             return self.cache_moves.clone();
         }
 
-        let mut buffer = if captures && self.cache_ok {
-            self.cache_moves.clone()
-        } else {
-            self.get_all_moves()
-        };
+        let mut buffer = if self.cache_ok { self.cache_moves.clone() } else { self.get_all_moves()};
 
+
+        if !self.cache_ok {
+            self.cache_ok = true;
+            self.cache_moves = buffer.clone();
+        }
+        
         // find own general and other
         let grow = self.general[2*self.player as usize];
         let gcol = self.general[2*self.player as usize + 1];
@@ -201,7 +207,7 @@ impl Board {
             if captures && mov.captured == 0 {
                 continue;
             }
-
+            
             // if !self.is_valid_move(&mov) {
             //     println!("{}", self.display());
             //     println!("Move {}", mov.display());
@@ -209,17 +215,15 @@ impl Board {
             //     panic!("move is not legal in get_moves");
             // }
 
+            self.temp = true;
             self.mov(mov);
             if !self.will_check(&mov, &mut potential, grow, gcol, otherrow, othercol) {
                 updated_buffer.push(mov.clone());
             }
+            self.temp = false;
             self.unmov(mov);
         }
 
-        if !captures {
-            self.cache_ok = true;
-            self.cache_moves = updated_buffer.clone();
-        }
 
         updated_buffer
     }
@@ -246,10 +250,9 @@ impl Board {
         // find own general
         let grow = self.general[2*self.player as usize];
         let gcol = self.general[2*self.player as usize + 1];
-      
+
         // find moves of other team
         self.next_turn();
-        self.cache_ok = false;
         for mov in self.get_all_moves() {
             if mov.endx == gcol && mov.endy == grow {
                 self.next_turn();
@@ -261,7 +264,7 @@ impl Board {
         return false;
     }
 
-    
+
     /// Performs the move
     pub fn mov(&mut self, mov: &mut Move) {
         // check if capturing general
@@ -429,6 +432,14 @@ impl Board {
             return self.player.inverse();
         }
         Condition::NONE
+    }
+    
+    pub fn is_drawish(&self)->bool {
+        if *self.history.get(&self.hh).unwrap() >= 2 {
+            return true;
+        }
+        
+        return false;
     }
     
     pub fn is_draw(&self) -> bool {
@@ -944,7 +955,7 @@ impl Board {
         if !((self.player == Condition::RED && row <= 4) || (self.player == Condition::BLACK && row >= 5)) {
             return false;
         }
-        
+
         return true;
     }
 
